@@ -201,12 +201,15 @@ jobs:
       - name: Delete GRIB2 files
         run: rm -rf data/
 
-  deploy_to_gh_pages:
+  deploy_to_r2:
     runs-on: ubuntu-latest
     needs: fetch_and_generate
     steps:
-      - name: Clear old run folder
-        run: rm -rf icond2/${{ needs.fetch_and_generate.outputs.run }} || true
+      - name: Install AWS CLI
+        run: |
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip
+          sudo ./aws/install
 
       - name: Download PNGs artifact
         uses: actions/download-artifact@v4
@@ -214,36 +217,10 @@ jobs:
           name: icond2
           path: ./icond2/${{ needs.fetch_and_generate.outputs.run }}
 
-      - name: Wait until deploy time
+      - name: Upload PNGs to Cloudflare R2
         run: |
-          # definiere Zielzeit für den Deploy (UTC)
-          case "${{ needs.fetch_and_generate.outputs.run }}" in
-            00) DEPLOY_HOUR=01 ; DEPLOY_MINUTE=59 ;;
-            03) DEPLOY_HOUR=04 ; DEPLOY_MINUTE=59 ;;
-            06) DEPLOY_HOUR=07 ; DEPLOY_MINUTE=59 ;;
-            09) DEPLOY_HOUR=10 ; DEPLOY_MINUTE=59 ;;
-            12) DEPLOY_HOUR=13 ; DEPLOY_MINUTE=59 ;;
-            15) DEPLOY_HOUR=16 ; DEPLOY_MINUTE=59 ;;
-            18) DEPLOY_HOUR=19 ; DEPLOY_MINUTE=59 ;;
-            21) DEPLOY_HOUR=22 ; DEPLOY_MINUTE=59 ;;
-          esac
-
-          echo "Deploy will start at $DEPLOY_HOUR:$DEPLOY_MINUTE UTC"
-
-          while true; do
-            CURRENT_HOUR=$(date -u +%H)
-            CURRENT_MINUTE=$(date -u +%M)
-            if [ $CURRENT_HOUR -gt $DEPLOY_HOUR ] || { [ $CURRENT_HOUR -eq $DEPLOY_HOUR ] && [ $CURRENT_MINUTE -ge $DEPLOY_MINUTE ]; }; then
-              echo "Target deploy time reached, continuing..."
-              break
-            fi
-            sleep 30
-          done
-
-      - name: Deploy current run to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GH_PAT }}
-          publish_dir: ./icond2/${{ needs.fetch_and_generate.outputs.run }}
-          publish_branch: gh-pages
-          keep_files: false
+          aws s3 sync ./icond2/${{ needs.fetch_and_generate.outputs.run }} s3://${{ secrets.R2_BUCKET }}/icon-d2/${{ needs.fetch_and_generate.outputs.run }}/ \
+          --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
