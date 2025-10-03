@@ -124,14 +124,16 @@ cape_norm = mcolors.BoundaryNorm(cape_bounds, cape_colors.N)
 # ------------------------------
 # DBZ-CMAX Farben
 # ------------------------------
-dbz_bounds = np.concatenate(([2, 6], np.arange(6, 74, 2)))
-dbz_bounds = np.unique(dbz_bounds)
+dbz_bounds = [0, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60, 63, 67, 70]
 dbz_colors = [
-    "#676767", "#0783FF", "#00FFAA", "#FFFF00",
-    "#FA7D00", "#FF0303", "#FF00FF", "#C80085"
+    "#676767", "#FFFFFF", "#B3EFED", "#8CE7E2", "#00F5ED",
+    "#00CEF0", "#01AFF4", "#028DF6", "#014FF7", "#0000F6",
+    "#00FF01", "#01DF00", "#00D000", "#00BF00", "#00A701",
+    "#019700", "#FFFF00", "#F9F000", "#EDD200", "#E7B500",
+    "#FF5000", "#FF2801", "#F40000", "#EA0001", "#CC0000",
+    "#FFC8FF", "#E9A1EA", "#D379D3", "#BE55BE", "#960E96"
 ]
-dbz_cmap = LinearSegmentedColormap.from_list("dbz_cmap", dbz_colors, N=len(dbz_bounds)-1)
-dbz_norm = BoundaryNorm(dbz_bounds, dbz_cmap.N)
+dbz_norm = mcolors.BoundaryNorm(dbz_bounds, dbz_colors.N)
 
 # ------------------------------
 # Windböen-Farben
