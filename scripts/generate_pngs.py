@@ -125,14 +125,14 @@ cape_norm = mcolors.BoundaryNorm(cape_bounds, cape_colors.N)
 # DBZ-CMAX Farben
 # ------------------------------
 dbz_bounds = [0, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60, 63, 67, 70]
-dbz_colors = [
+dbz_colors = ListedColormap([
     "#676767", "#FFFFFF", "#B3EFED", "#8CE7E2", "#00F5ED",
     "#00CEF0", "#01AFF4", "#028DF6", "#014FF7", "#0000F6",
     "#00FF01", "#01DF00", "#00D000", "#00BF00", "#00A701",
     "#019700", "#FFFF00", "#F9F000", "#EDD200", "#E7B500",
     "#FF5000", "#FF2801", "#F40000", "#EA0001", "#CC0000",
     "#FFC8FF", "#E9A1EA", "#D379D3", "#BE55BE", "#960E96"
-]
+])
 dbz_norm = mcolors.BoundaryNorm(dbz_bounds, dbz_colors.N)
 
 # ------------------------------
@@ -361,7 +361,7 @@ for filename in sorted(os.listdir(data_dir)):
     elif var_type == "cape_ml":
         im = ax.pcolormesh(lon, lat, data, cmap=cape_colors, norm=cape_norm, shading="auto")
     elif var_type == "dbz_cmax":
-        im = ax.pcolormesh(lon, lat, data, cmap=dbz_cmap, norm=dbz_norm, shading="auto")
+        im = ax.pcolormesh(lon, lat, data, cmap=dbz_colors, norm=dbz_norm, shading="auto")
     elif var_type == "wind":
         im = ax.pcolormesh(lon, lat, data, cmap=wind_colors, norm=wind_norm, shading="auto")
     elif var_type == "snow":
