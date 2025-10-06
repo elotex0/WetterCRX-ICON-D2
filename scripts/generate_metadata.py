@@ -11,22 +11,34 @@ metadata = {
     "run": run,
     "date": date,
     "generated_at": datetime.utcnow().isoformat() + "Z",
-    "var_types": {},
+    "var_types": [],
+    "timesteps": {}
 }
 
 for var_type in os.listdir(png_root):
     var_path = os.path.join(png_root, var_type)
     if not os.path.isdir(var_path):
         continue
+
+    # var_type merken
+    metadata["var_types"].append(var_type)
+
+    # PNG-Dateien finden
     files = sorted(f for f in os.listdir(var_path) if f.endswith(".png"))
-    timesteps = [f.split("_")[-1].replace(".png","") for f in files]
-    metadata["var_types"][var_type] = {
-        "num_steps": len(files),
-        "timesteps": timesteps
-    }
+    timesteps = []
+
+    for f in files:
+        # Beispiel: t2m_20251008_0700.png → 20251008_0700
+        parts = f.replace(".png", "").split("_")
+        if len(parts) >= 2:
+            timestep = "_".join(parts[-2:]) if len(parts[-1]) == 4 else parts[-1]
+            timesteps.append(timestep)
+
+    metadata["timesteps"][var_type] = timesteps
 
 # metadata.json liegt **außerhalb** des run-Ordners
 meta_path = os.path.join(os.path.dirname(png_root), "metadata.json")
 with open(meta_path, "w") as f:
-    json.dump(metadata, f, indent=2)
+    json.dump(metadata, f, indent=2, ensure_ascii=False)
+
 print(f"Metadata written to {meta_path}")
