@@ -5,7 +5,7 @@ from datetime import datetime
 
 png_root = sys.argv[1]  # z.B. icond2/<RUN>
 run = sys.argv[2]
-date = sys.argv[3]
+date = sys.argv[3] if len(sys.argv) > 3 else datetime.utcnow().strftime("%Y%m%d")
 
 metadata = {
     "run": run,
