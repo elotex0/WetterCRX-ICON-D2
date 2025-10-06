@@ -257,6 +257,9 @@ for filename in sorted(os.listdir(data_dir)):
         if tp_var is None:
             print(f"Keine Niederschlagsvariable in {filename}")
             continue
+        lon = ds["longitude"].values
+        lat = ds["latitude"].values
+        lon2d, lat2d = np.meshgrid(lon, lat)
         tp_all = ds[tp_var].values
         data = tp_all[3]-tp_all[0] if tp_all.shape[0]>1 else tp_all[0]
         data[data<0.1]=np.nan
@@ -355,7 +358,7 @@ for filename in sorted(os.listdir(data_dir)):
             idx_data[data==c]=i
         im = ax.pcolormesh(lon, lat, idx_data, cmap=cmap, vmin=-0.5, vmax=len(codes)-0.5, shading="auto")
     elif var_type == "tp":
-        im = ax.pcolormesh(lon, lat, data, cmap=prec_colors, norm=prec_norm, shading="auto")
+        im = ax.pcolormesh(lon2d, lat2d, data, cmap=prec_colors, norm=prec_norm, shading="auto")
     elif var_type == "tp_acc":
         im = ax.pcolormesh(lon2d, lat2d, data, cmap=tp_acc_colors, norm=tp_acc_norm, shading="auto")
     elif var_type == "cape_ml":
