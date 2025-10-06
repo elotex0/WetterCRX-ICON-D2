@@ -205,39 +205,24 @@ jobs:
     runs-on: ubuntu-latest
     needs: fetch_and_generate
     steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v3
-
       - name: Download PNGs artifact
         uses: actions/download-artifact@v4
         with:
           name: icond2
           path: ./icond2
 
-      - name: Generate Metadata
+      - name: Delete old run from R2
         run: |
-          python scripts/generate_metadata.py icond2/${{ needs.fetch_and_generate.outputs.run }} ${{ needs.fetch_and_generate.outputs.run }} ${{ env.DATE }}
-
-      - name: Clean old runs on R2 except current
-        run: |
-          for run_folder in $(aws s3 ls s3://${{ secrets.R2_BUCKET }}/icon-d2/ --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com | awk '{print $2}' | sed 's#/##'); do
-            if [ "$run_folder" != "${{ needs.fetch_and_generate.outputs.run }}/" ]; then
-              aws s3 rm s3://${{ secrets.R2_BUCKET }}/icon-d2/$run_folder --recursive --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
-            fi
-          done
+          aws s3 rm s3://${{ secrets.R2_BUCKET }}/icon-d2/${{ needs.fetch_and_generate.outputs.run }}/ --recursive \
+          --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
 
-      - name: Upload current run and metadata.json to R2
+      - name: Upload PNGs to Cloudflare R2
         run: |
-          # Upload run folder
           aws s3 sync ./icond2/${{ needs.fetch_and_generate.outputs.run }}/ s3://${{ secrets.R2_BUCKET }}/icon-d2/${{ needs.fetch_and_generate.outputs.run }}/ \
-            --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
-
-          # Upload metadata.json outside run folder
-          aws s3 cp ./icond2/metadata.json s3://${{ secrets.R2_BUCKET }}/icon-d2/metadata.json \
-            --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
