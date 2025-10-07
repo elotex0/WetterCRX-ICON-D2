@@ -339,6 +339,8 @@ for filename in sorted(os.listdir(data_dir)):
     ax.set_extent(extent)
     ax.set_axis_off()
     ax.set_aspect('auto')
+    ax.add_feature(cfeature.LAND, facecolor="#676767")
+    ax.add_feature(cfeature.OCEAN, facecolor="#676767")
 
     # Plot
     if var_type == "t2m":
