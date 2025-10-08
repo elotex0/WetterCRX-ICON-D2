@@ -347,7 +347,7 @@ for filename in sorted(os.listdir(data_dir)):
     elif var_type == "dbz_cmax":
         im = ax.pcolormesh(lon, lat, data, cmap=dbz_colors, norm=dbz_norm, shading="auto")
     elif var_type == "wind":
-        im = ax.pcolormesh(lon2d, lat2d, data, cmap=wind_colors, norm=wind_norm, shading="auto")
+        im = ax.pcolormesh(lon, lat, data, cmap=wind_colors, norm=wind_norm, shading="auto")
     elif var_type == "snow":
         im = ax.pcolormesh(lon2d, lat2d, data, cmap=snow_colors, norm=snow_norm, shading="auto")
     elif var_type == "cloud":
