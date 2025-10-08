@@ -268,6 +268,9 @@ for filename in sorted(os.listdir(data_dir)):
         if "max_i10fg" not in ds:
             print(f"Keine max_i10fg in {filename}")
             continue
+        lon = ds["longitude"].values
+        lat = ds["latitude"].values
+        lon2d, lat2d = np.meshgrid(lon, lat)
         data = ds["max_i10fg"].values
         data[data < 0] = np.nan
         data = data * 3.6  # m/s → km/h
@@ -347,7 +350,7 @@ for filename in sorted(os.listdir(data_dir)):
     elif var_type == "dbz_cmax":
         im = ax.pcolormesh(lon, lat, data, cmap=dbz_colors, norm=dbz_norm, shading="auto")
     elif var_type == "wind":
-        im = ax.pcolormesh(lon, lat, data, cmap=wind_colors, norm=wind_norm, shading="auto")
+        im = ax.pcolormesh(lon2d, lat2d, data, cmap=wind_colors, norm=wind_norm, shading="auto")
     elif var_type == "snow":
         im = ax.pcolormesh(lon2d, lat2d, data, cmap=snow_colors, norm=snow_norm, shading="auto")
     elif var_type == "cloud":
