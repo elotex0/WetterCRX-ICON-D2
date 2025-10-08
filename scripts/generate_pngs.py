@@ -268,9 +268,6 @@ for filename in sorted(os.listdir(data_dir)):
         if "max_i10fg" not in ds:
             print(f"Keine max_i10fg in {filename}")
             continue
-        lon = ds["longitude"].values
-        lat = ds["latitude"].values
-        lon2d, lat2d = np.meshgrid(lon, lat)
         data = ds["max_i10fg"].values
         data[data < 0] = np.nan
         data = data * 3.6  # m/s → km/h
