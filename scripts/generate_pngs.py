@@ -265,12 +265,23 @@ for filename in sorted(os.listdir(data_dir)):
             continue
         data = ds["DBZ_CMAX"].values[0,:,:]
     elif var_type == "wind":
-        if "max_i10fg" not in ds:
-            print(f"Keine max_i10fg in {filename}")
+        try:
+            # Alle GRIB-Gruppen laden und nach max_i10fg suchen
+            ds = next(
+                (d for d in cfgrib.open_datasets(path) if "max_i10fg" in d),
+                None
+            )
+            if ds is None:
+                print(f"Keine max_i10fg in {filename}")
+                continue
+
+            # Daten bereinigen und umrechnen
+            data = ds["max_i10fg"].values
+            data = np.where(data < 0, np.nan, data) * 3.6  # m/s → km/h
+
+        except Exception as e:
+            print(f"Fehler beim Verarbeiten von {filename}: {e}")
             continue
-        data = ds["max_i10fg"].values
-        data[data < 0] = np.nan
-        data = data * 3.6  # m/s → km/h
     elif var_type == "snow":
         if "sde" not in ds:
             print(f"Keine sde-Variable in {filename}")
