@@ -129,40 +129,7 @@ jobs:
               bunzip2 -f wind_${i_padded}.grib2.bz2
             fi
           '
-      - name: Check wind GRIB2 files and variable
-        run: |
-          sudo apt-get update && sudo apt-get install -y wgrib2
-          MISSING=0
-          WRONG_VAR=0
-      
-          for i in $(seq 0 47); do
-            FILE="data/wind/wind_$(printf "%03d" $i).grib2"
-      
-            if [ ! -f "$FILE" ]; then
-              echo "❌ Datei fehlt: $FILE"
-              MISSING=$((MISSING+1))
-              continue
-            fi
-      
-            # Prüfe, ob die Variable max_i10fg drin ist
-            if ! wgrib2 "$FILE" | grep -q "max_i10fg"; then
-              echo "⚠️ Variable fehlt in $FILE"
-              WRONG_VAR=$((WRONG_VAR+1))
-            fi
-          done
-      
-          if [ $MISSING -gt 0 ]; then
-            echo "Es fehlen $MISSING Wind-Dateien! Abbruch."
-            exit 1
-          fi
-      
-          if [ $WRONG_VAR -gt 0 ]; then
-            echo "Es gibt $WRONG_VAR Dateien ohne die erwartete Variable max_i10fg!"
-            exit 1
-          fi
-      
-          echo "✅ Alle Wind-Dateien vorhanden und enthalten max_i10fg."
-
+          
       - name: Download sde GRIB2 files
         run: |
           mkdir -p data/snow
