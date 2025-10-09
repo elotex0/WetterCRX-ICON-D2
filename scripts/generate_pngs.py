@@ -265,11 +265,10 @@ for filename in sorted(os.listdir(data_dir)):
             continue
         data = ds["DBZ_CMAX"].values[0,:,:]
     elif var_type == "wind":
-        varname = next((vn for vn in ds.data_vars if vn.lower() in ["max_i10fg", "i10fg", "vmax_10m", "10fgmax"]), None)
-        if varname is None:
-            print(f"Keine passende Windvariable in {filename}: {list(ds.data_vars.keys())}")
+        if "fg10" not in ds:
+            print(f"Keine passende Windvariable in {filename}")
             continue
-        data = ds[varname].values
+        data = ds["fg10"].values
         data[data < 0] = np.nan
         data = data * 3.6  # m/s → km/h
     elif var_type == "snow":
