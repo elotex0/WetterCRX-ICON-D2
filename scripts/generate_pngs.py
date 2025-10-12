@@ -181,6 +181,17 @@ twater_colors = ListedColormap([
     ])
 
 twater_norm = mcolors.BoundaryNorm(twater_bounds, twater_colors.N)
+#---------------------
+#Schneefallgrenze
+#---------------------
+snowfall_bounds = [0, 100, 250, 500, 750, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000]
+snowfall_colors = ListedColormap([
+    "#FF00A6", "#D900FF", "#8C00FF", "#0008FF", "#0099FF",
+    "#00F2FF", "#1AFF00", "#FFFB00", "#FFBF00", "#FFA600",
+    "#FF6F00", "#930000", 
+])
+
+snowfall_norm = mcolors.BoundaryNorm(snowfall_bounds, snowfall_colors.N)
 
 # ------------------------------
 # Kartenparameter
@@ -293,6 +304,12 @@ for filename in sorted(os.listdir(data_dir)):
             continue
         data = ds["TWATER"].values
         data[data < 0] = np.nan
+    elif var_type == "snowfall":
+        if "SNOWLMT" not in ds:
+            print(f"Keine SNOWLMT-Variable in {filename} ds.keys(): {list(ds.keys())}")
+            continue
+        data = ds["SNOWLMT"].values
+        data[data < 0] = np.nan
     else:
         print(f"Unbekannter var_type {var_type}")
         continue
@@ -354,6 +371,8 @@ for filename in sorted(os.listdir(data_dir)):
         im = ax.pcolormesh(lon, lat, data, cmap=cloud_colors, norm=cloud_norm, shading="auto")
     elif var_type == "twater":
         im = ax.pcolormesh(lon, lat, data, cmap=twater_colors, norm=twater_norm, shading="auto")
+    elif var_type == "snowfall":
+        im = ax.pcolormesh(lon, lat, data, cmap=snowfall_colors, norm=snowfall_norm, shading="auto")
 
     # Bundesländer-Grenzen aus Cartopy (statt GeoJSON)
     ax.add_feature(cfeature.STATES.with_scale("10m"), edgecolor="#2C2C2C", linewidth=1)
@@ -370,8 +389,8 @@ for filename in sorted(os.listdir(data_dir)):
     # Legende
     legend_h_px = 50
     legend_bottom_px = 45
-    if var_type in ["t2m","tp","tp_acc","cape_ml","dbz_cmax","wind","snow", "cloud", "twater"]:
-        bounds = t2m_bounds if var_type=="t2m" else prec_bounds if var_type=="tp" else tp_acc_bounds if var_type=="tp_acc" else cape_bounds if var_type=="cape_ml" else dbz_bounds if var_type=="dbz_cmax" else wind_bounds if var_type=="wind" else snow_bounds if var_type=="snow" else cloud_bounds if var_type=="cloud" else twater_bounds
+    if var_type in ["t2m","tp","tp_acc","cape_ml","dbz_cmax","wind","snow", "cloud", "twater", "snowfall"]:
+        bounds = t2m_bounds if var_type=="t2m" else prec_bounds if var_type=="tp" else tp_acc_bounds if var_type=="tp_acc" else cape_bounds if var_type=="cape_ml" else dbz_bounds if var_type=="dbz_cmax" else wind_bounds if var_type=="wind" else snow_bounds if var_type=="snow" else cloud_bounds if var_type=="cloud" else twater_bounds if var_type=="twater" else snowfall_bounds
         cbar_ax = fig.add_axes([0.03, legend_bottom_px / FIG_H_PX, 0.94, legend_h_px / FIG_H_PX])
         cbar = fig.colorbar(im, cax=cbar_ax, orientation="horizontal", ticks=bounds)
         cbar.ax.tick_params(colors="black", labelsize=7)
@@ -401,7 +420,8 @@ for filename in sorted(os.listdir(data_dir)):
         "cloud": "Gesamtbewölkung (%)",
         "wind": "Windböen (km/h)",
         "snow": "Schneehöhe (cm)",
-        "twater": "Gesamtwassergehalt (mm)"
+        "twater": "Gesamtwassergehalt (mm)",
+        "snowfall": "Schneefallgrenze (m)"
     }
 
     left_text = footer_texts.get(var_type, var_type) + \
