@@ -166,6 +166,20 @@ jobs:
               bunzip2 -f twater_${i_padded}.grib2.bz2
             fi
           '
+
+      - name: Download snowfall GRIB2 files
+        run: |
+          mkdir -p data/snowfall
+          cd data/snowfall
+          seq 0 47 | xargs -n 1 -P 12 -I{} bash -c '
+            i_padded=$(printf "%03d" {} )
+            URL="https://opendata.dwd.de/weather/nwp/icon-d2/grib/${{ env.RUN }}/snowlmt/icon-d2_germany_regular-lat-lon_single-level_${{ env.DATE }}${{ env.RUN }}_${i_padded}_2d_snowlmt.grib2.bz2"
+            wget -O snowfall_${i_padded}.grib2.bz2 "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
+            if [ -f "snowfall_${i_padded}.grib2.bz2" ]; then
+              bunzip2 -f twater_${i_padded}.grib2.bz2
+            fi
+          '
+          
       - name: Upload GRIB2 as artifact
         uses: actions/upload-artifact@v4
         with:
@@ -181,8 +195,8 @@ jobs:
     needs: fetch_and_generate
     strategy:
       matrix:
-        variable: [t2m, ww, tp, tp_acc, wind, snow, cape_ml, dbz_cmax, cloud, twater]
-      max-parallel: 10
+        variable: [t2m, ww, tp, tp_acc, wind, snow, cape_ml, dbz_cmax, cloud, twater, snowfall]
+      max-parallel: 11
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v3
