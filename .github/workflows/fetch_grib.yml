@@ -166,54 +166,78 @@ jobs:
               bunzip2 -f twater_${i_padded}.grib2.bz2
             fi
           '
-
-      - name: Generate PNGs
-        run: |
-          mkdir -p icond2/${{ env.RUN }}/t2m
-          mkdir -p icond2/${{ env.RUN }}/ww
-          mkdir -p icond2/${{ env.RUN }}/tp
-          mkdir -p icond2/${{ env.RUN }}/tp_acc
-          mkdir -p icond2/${{ env.RUN }}/cape_ml
-          mkdir -p icond2/${{ env.RUN }}/dbz_cmax
-          mkdir -p icond2/${{ env.RUN }}/wind
-          mkdir -p icond2/${{ env.RUN }}/snow
-          mkdir -p icond2/${{ env.RUN }}/cloud
-          mkdir -p icond2/${{ env.RUN }}/twater
-
-          python scripts/generate_pngs.py data/t2m icond2/${{ env.RUN }}/t2m t2m
-          python scripts/generate_pngs.py data/ww icond2/${{ env.RUN }}/ww ww
-          python scripts/generate_pngs.py data/tp icond2/${{ env.RUN }}/tp tp
-          python scripts/generate_pngs.py data/tp icond2/${{ env.RUN }}/tp_acc tp_acc
-          python scripts/generate_pngs.py data/cape_ml icond2/${{ env.RUN }}/cape_ml cape_ml
-          python scripts/generate_pngs.py data/dbz_cmax icond2/${{ env.RUN }}/dbz_cmax dbz_cmax
-          python scripts/generate_pngs.py data/wind icond2/${{ env.RUN }}/wind wind
-          python scripts/generate_pngs.py data/snow icond2/${{ env.RUN }}/snow snow
-          python scripts/generate_pngs.py data/cloud icond2/${{ env.RUN }}/cloud cloud
-          python scripts/generate_pngs.py data/twater icond2/${{ env.RUN }}/twater twater
-
-      - name: Upload PNGs as artifact
+      - name: Upload GRIB2 as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: icond2
-          path: icond2
+          name: grib2
+          path: data/
 
-
-        # --------- Delete GRIB2 Files ---------
-      - name: Delete GRIB2 files
+      - name: Delete GRIB2 files (local cleanup)
         run: rm -rf data/
 
-  deploy_to_r2:
+
+  generate_pngs:
     runs-on: ubuntu-latest
     needs: fetch_and_generate
+    strategy:
+      matrix:
+        variable: [t2m, ww, tp, tp_acc, wind, snow, cape_ml, dbz_cmax, cloud, twater]
+      max-parallel: 10
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v3
 
-      - name: Download PNGs artifact
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download GRIB2 artifact
         uses: actions/download-artifact@v4
         with:
-          name: icond2
-          path: ./icond2
+          name: grib2
+          path: data/
+
+      - name: Generate PNGs for ${{ matrix.variable }}
+        run: |
+          mkdir -p icond2/${{ matrix.variable }}
+          python scripts/generate_pngs.py \
+            data/${{ matrix.variable }} \
+            icond2/${{ matrix.variable }} \
+            ${{ matrix.variable }}
+
+      - name: Upload PNGs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: icond2-${{ matrix.variable }}
+          path: icond2/${{ matrix.variable }}
+
+  deploy_to_r2:
+    runs-on: ubuntu-latest
+    needs: [fetch_and_generate, generate_pngs]
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+
+      - name: Download all PNGs artifact
+        uses: actions/download-artifact@v4
+        with:
+          pattern: icond2-*
+          path: icond2_raw
+
+      - name: Merge PNG folders into one structure
+        run: |
+          mkdir -p icond2/${{ needs.fetch_and_generate.outputs.run }}
+          for d in icond2_raw/*; do
+            if [ -d "$d" ]; then
+              varname=$(basename "$d" | sed 's/^icond2-//')  # entfernt "icond2-" Prefix
+              mkdir -p icond2/${{ needs.fetch_and_generate.outputs.run }}/"$varname"
+              cp -r "$d"/* icond2/${{ needs.fetch_and_generate.outputs.run }}/"$varname"/ || true
+            fi
+          done
 
       - name: Generate Metadata
         run: |
