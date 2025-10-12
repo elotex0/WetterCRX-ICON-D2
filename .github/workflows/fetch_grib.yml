@@ -204,10 +204,15 @@ jobs:
       - name: Generate PNGs for ${{ matrix.variable }}
         run: |
           mkdir -p icond2/${{ matrix.variable }}
+          input_dir="data/${{ matrix.variable }}"
+          if [ "${{ matrix.variable }}" = "tp_acc" ]; then
+            input_dir="data/tp"
+          fi
           python scripts/generate_pngs.py \
-            data/${{ matrix.variable }} \
+            "$input_dir" \
             icond2/${{ matrix.variable }} \
             ${{ matrix.variable }}
+
 
       - name: Upload PNGs artifact
         uses: actions/upload-artifact@v4
