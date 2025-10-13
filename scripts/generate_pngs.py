@@ -207,11 +207,9 @@ pmsl_bounds_colors = list(range(910, 1060, 5))  # 935, 940, 945, 950, 955, ...
 pmsl_colors = mcolors.LinearSegmentedColormap.from_list(
     "pmsl_smooth",
     [
-        "#F989C1", "#D066FF", "#A000FF",        
-        "#000080", "#0000FF", "#87CEFA",        
-        "#00A75E", "#48C000", "#FFD700",        
-        "#FFA500", "#FF4500",                    
-        "#FFFFFF", "#D3D3D3"                     
+        "#FF33AA", "#9B00FF", "#3F00FF",        
+        "#007BFF", "#00FF1E", "#FF9900",        
+        "#FF0000", "#FFFFFF"                    
     ],
     N=len(pmsl_bounds_colors)
 )
@@ -412,12 +410,12 @@ for filename in sorted(os.listdir(data_dir)):
         data_hpa = data  # data schon in hPa
 
         # Haupt-Isobaren (alle 5 hPa)
-        main_levels = list(range(935, 1060, 5))
+        main_levels = list(range(910, 1060, 5))
         # Feine Isobaren (alle 1 hPa)
-        fine_levels = list(range(935, 1060, 1))
+        fine_levels = list(range(910, 1060, 2))
 
         # feine Isobaren dünn/grau
-        ax.contour(lon, lat, data_hpa, levels=fine_levels, colors='grey', linewidths=0.5, alpha=0.6)
+        ax.contour(lon, lat, data_hpa, levels=fine_levels, colors='white', linewidths=0.5, alpha=0.6)
 
         # Haupt-Isobaren dick/schwarz
         cs = ax.contour(lon, lat, data_hpa, levels=main_levels, colors='white', linewidths=1.0, alpha=0.9)
