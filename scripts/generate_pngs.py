@@ -410,9 +410,6 @@ for filename in sorted(os.listdir(data_dir)):
         # Feine Isobaren (alle 2 hPa)
         fine_levels = list(range(920, 1060, 1))
 
-        main_levels = [lev for lev in main_levels if data_hpa.min() <= lev <= data_hpa.max()]
-        fine_levels = [lev for lev in fine_levels if data_hpa.min() <= lev <= data_hpa.max()]
-
         # Feine Isobaren-Linien (transparent)
         ax.contour(lon, lat, data_hpa, levels=fine_levels,
                 colors='white', linewidths=0.3, alpha=0.8)
