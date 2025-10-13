@@ -415,10 +415,10 @@ for filename in sorted(os.listdir(data_dir)):
         fine_levels = list(range(910, 1060, 2))
 
         # feine Isobaren dünn/grau
-        ax.contour(lon, lat, data_hpa, levels=fine_levels, colors='white', linewidths=0.5, alpha=0.6)
+        ax.contour(lon, lat, data_hpa, levels=fine_levels, colors='white', linewidths=0.5, alpha=0.7)
 
         # Haupt-Isobaren dick/schwarz
-        cs = ax.contour(lon, lat, data_hpa, levels=main_levels, colors='white', linewidths=1.0, alpha=0.9)
+        cs = ax.contour(lon, lat, data_hpa, levels=main_levels, colors='white', linewidths=1.0, alpha=1)
 
         # Hauptlevels beschriften
         for level in main_levels:
@@ -429,8 +429,8 @@ for filename in sorted(os.listdir(data_dir)):
                 val = float(txt.get_text())
                 if val <= 999 or val >= 1030:
                     txt.set_fontweight('bold')
-                    txt.set_path_effects([path_effects.withStroke(linewidth=1.5, foreground='white')])
                 txt.set_color('black')
+                txt.set_path_effects([path_effects.withStroke(linewidth=1.5, foreground='white')])
 
         # feine Extremwerte (<1000 oder >1030) beschriften
         cs_fine = ax.contour(lon, lat, data_hpa, levels=fine_levels, colors='grey', linewidths=0)
