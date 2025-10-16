@@ -5,6 +5,7 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import pandas as pd
 import os
+from adjustText import adjust_text
 import matplotlib.colors as mcolors
 import matplotlib.patches as mpatches
 import matplotlib.patheffects as path_effects
@@ -66,19 +67,22 @@ ww_categories = {
 # ------------------------------
 # Temperatur-Farben
 # ------------------------------
-t2m_bounds = list(range(-28, 41, 2))
-t2m_colors = [
-    "#C802CB", "#AA00A9", "#8800AA", "#6600AA", "#4400AB",
-    "#2201AA", "#0000CC", "#0033CC", "#0044CB", "#0055CC",
-    "#0066CB", "#0076CD", "#0088CC", "#0099CB", "#00A5CB",
-    "#00BB22", "#11C501", "#32D500", "#77D600", "#87DD00",
-    "#FFCC00", "#FFBB00", "#FFAA01", "#FE9900", "#FF8800",
-    "#FF6600", "#FF3300", "#FE0000", "#DC0000", "#BA0100",
-    "#91002B", "#980065", "#BB0099", "#EE01AB", "#FF21FE"
-]
+t2m_bounds = list(range(-36, 50, 2))
+t2m_colors = LinearSegmentedColormap.from_list(
+    "t2m_smoooth",
+    [
+    "#F675F4", "#F428E9", "#B117B5", "#950CA2", "#640180",
+    "#3E007F", "#00337E", "#005295", "#1292FF", "#49ACFF",
+    "#8FCDFF", "#B4DBFF", "#B9ECDD", "#88D4AD", "#07A125",
+    "#3FC107", "#9DE004", "#E7F700", "#F3CD0A", "#EE5505",
+    "#C81904", "#AF0E14", "#620001", "#C87879", "#FACACA",
+    "#E1E1E1", "#6D6D6D"
+    ],
+N=len(t2m_bounds)
+)
+t2m_norm = BoundaryNorm(t2m_bounds, ncolors=len(t2m_bounds))
 
-t2m_cmap = ListedColormap(t2m_colors)
-t2m_norm = mcolors.BoundaryNorm(t2m_bounds, t2m_cmap.N)
+# ------------------------------
 
 # ------------------------------
 # Niederschlags-Farben 1h (tp)
@@ -343,7 +347,48 @@ for filename in sorted(os.listdir(data_dir)):
 
     # Plot
     if var_type == "t2m":
-        im = ax.pcolormesh(lon, lat, data, cmap=t2m_cmap, norm=t2m_norm, shading="auto")
+        im = ax.pcolormesh(lon, lat, data, cmap=t2m_colors, norm=t2m_norm, shading="auto")
+        # Anzahl der Werte, die angezeigt werden sollen
+        n_labels = 25
+        
+        # 2D-Mesh für Maskierung
+        lon2d, lat2d = np.meshgrid(lon, lat)
+        
+        # Alle gültigen Datenpunkte innerhalb des Extents
+        lon_min, lon_max, lat_min, lat_max = extent
+        valid_mask = np.isfinite(data) & (lon2d >= lon_min) & (lon2d <= lon_max) & (lat2d >= lat_min) & (lat2d <= lat_max)
+        
+        # Indizes der gültigen Punkte
+        valid_indices = np.argwhere(valid_mask)
+
+        if len(valid_indices) > n_labels:
+            chosen_rows = np.random.choice(len(valid_indices), n_labels, replace=False)
+            chosen_indices = valid_indices[chosen_rows]
+        else:
+            chosen_indices = valid_indices
+
+        
+       # Abstand in Grad, innerhalb dessen keine Labels auf Städte gesetzt werden
+        min_city_dist = 0.5  
+
+        texts = []
+        for i, j in chosen_indices:
+            lon_pt, lat_pt = lon[j], lat[i]
+            
+            # Prüfen, ob der Punkt zu nah an einer Stadt liegt
+            if any(np.hypot(lon_pt - city_lon, lat_pt - city_lat) < min_city_dist
+                for city_lon, city_lat in zip(cities['lon'], cities['lat'])):
+                continue  # Punkt überspringen
+            
+            val = data[i, j]
+            txt = ax.text(lon_pt, lat_pt, f"{val:.0f}", fontsize=8,
+                        ha='center', va='center', color='black', weight='bold')
+            txt.set_path_effects([path_effects.withStroke(linewidth=1.5, foreground="white")])
+            texts.append(txt)
+
+        # Labels automatisch verschieben, um Überlappungen zu vermeiden
+        adjust_text(texts, ax=ax, expand_text=(1.2, 1.2), arrowprops=dict(arrowstyle="-"))
+        
     elif var_type == "ww":
         valid_mask = np.isfinite(data)
         codes = np.unique(data[valid_mask]).astype(int)
@@ -396,6 +441,10 @@ for filename in sorted(os.listdir(data_dir)):
         cbar.ax.tick_params(colors="black", labelsize=7)
         cbar.outline.set_edgecolor("black")
         cbar.ax.set_facecolor("white")
+
+        if var_type == "t2m":
+            tick_labels = [str(tick) if tick % 4 == 0 else "" for tick in bounds]
+            cbar.set_ticklabels(tick_labels)
 
         if var_type=="tp":
             cbar.set_ticklabels([int(tick) if float(tick).is_integer() else tick for tick in prec_bounds])
