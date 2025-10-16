@@ -369,7 +369,7 @@ for filename in sorted(os.listdir(data_dir)):
 
         
        # Abstand in Grad, innerhalb dessen keine Labels auf Städte gesetzt werden
-        min_city_dist = 0.9 
+        min_city_dist = 1.1 
 
         texts = []
         for i, j in chosen_indices:
