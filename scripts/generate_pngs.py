@@ -11,7 +11,6 @@ import matplotlib.patches as mpatches
 import matplotlib.patheffects as path_effects
 from zoneinfo import ZoneInfo
 from scipy.interpolate import RegularGridInterpolator
-from scipy.ndimage import gaussian_filter
 import numpy as np
 from matplotlib.colors import ListedColormap, BoundaryNorm, LinearSegmentedColormap
 import warnings
@@ -445,8 +444,7 @@ for filename in sorted(os.listdir(data_dir)):
     elif var_type == "cape_ml":
         im = ax.pcolormesh(lon, lat, data, cmap=cape_colors, norm=cape_norm, shading="auto")
     elif var_type == "dbz_cmax":
-        smoothed_grid = gaussian_filter(data, sigma=1.2)
-        im = ax.pcolormesh(lon, lat, smoothed_grid, cmap=dbz_colors, norm=dbz_norm, shading="auto")
+        im = ax.pcolormesh(lon, lat, data, cmap=dbz_colors, norm=dbz_norm, shading="auto")
     elif var_type == "wind":
         im = ax.pcolormesh(lon, lat, data, cmap=wind_colors, norm=wind_norm, shading="auto")
     # ---- Windwerte anzeigen (analog zu t2m) ----
