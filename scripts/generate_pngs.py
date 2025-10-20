@@ -10,6 +10,7 @@ import matplotlib.colors as mcolors
 import matplotlib.patches as mpatches
 import matplotlib.patheffects as path_effects
 from zoneinfo import ZoneInfo
+from scipy.ndimage import gaussian_filter
 from scipy.interpolate import RegularGridInterpolator
 import numpy as np
 from matplotlib.colors import ListedColormap, BoundaryNorm, LinearSegmentedColormap
@@ -279,7 +280,7 @@ for filename in sorted(os.listdir(data_dir)):
         if "DBZ_CMAX" not in ds:
             print(f"Keine DBZ_CMAX in {filename}")
             continue
-        data = ds["DBZ_CMAX"].values[0,:,:]
+        data = ds["DBZ_CMAX"].values
     elif var_type == "wind":
         if "fg10" not in ds:
             print(f"Keine passende Windvariable in {filename}")
@@ -349,7 +350,7 @@ for filename in sorted(os.listdir(data_dir)):
     # ---------------------------------
     # 🔍 Interpolation auf feineres Raster (optional)
     # ---------------------------------
-    target_res = 0.025  # Zielauflösung in Grad (~2.8 km)
+    target_res = 0.015  # Zielauflösung in Grad (~2.8 km)
     lon_min, lon_max, lat_min, lat_max = extent
     lon_new = np.arange(lon_min, lon_max + target_res, target_res)
     lat_new = np.arange(lat_min, lat_max + target_res, target_res)
@@ -444,7 +445,8 @@ for filename in sorted(os.listdir(data_dir)):
     elif var_type == "cape_ml":
         im = ax.pcolormesh(lon, lat, data, cmap=cape_colors, norm=cape_norm, shading="auto")
     elif var_type == "dbz_cmax":
-        im = ax.pcolormesh(lon, lat, data, cmap=dbz_colors, norm=dbz_norm, shading="auto")
+        data_fine = gaussian_filter(data, sigma=0.8)
+        im = ax.pcolormesh(lon, lat, data_fine, cmap=dbz_colors, norm=dbz_norm, shading="auto")
     elif var_type == "wind":
         im = ax.pcolormesh(lon, lat, data, cmap=wind_colors, norm=wind_norm, shading="auto")
     # ---- Windwerte anzeigen (analog zu t2m) ----
