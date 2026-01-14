@@ -195,8 +195,8 @@ jobs:
     needs: fetch_and_generate
     strategy:
       matrix:
-        variable: [t2m, ww, tp, tp_acc, wind, snow, cape_ml, dbz_cmax, cloud, twater, snowfall]
-      max-parallel: 11
+        variable: [t2m, ww, tp, tp_acc, wind, snow, cape_ml, dbz_cmax, cloud, twater, snowfall, change_snow]
+      max-parallel: 12
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v3
@@ -221,6 +221,8 @@ jobs:
           input_dir="data/${{ matrix.variable }}"
           if [ "${{ matrix.variable }}" = "tp_acc" ]; then
             input_dir="data/tp"
+          elif [ "${{ matrix.variable }}" = "change_snow" ]; then
+            input_dir="data/snow"
           fi
           python scripts/generate_pngs.py \
             "$input_dir" \
