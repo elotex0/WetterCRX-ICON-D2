@@ -165,6 +165,19 @@ snow_colors = ListedColormap([
 snow_norm = mcolors.BoundaryNorm(snow_bounds, snow_colors.N)
 
 #-------------------------------
+# Schneehöhen-Änderung-Farben
+#------------------------------
+
+change_bounds = [-30, -15, -7, -3, -1, -0.1, 0, 0.1, 0.5, 2, 4, 6, 10, 15, 30, 50, 75, 100]
+change_colors = ListedColormap([
+    "#D66900", "#F1A30D", "#F7E521", "#78C239", "#24B301",
+    "#FFFFFF", "#FFFFFF", "#57A2E3", "#2A78CD", "#124FA8",
+    "#2116B0", "#42069C", "#9E009B", "#CB00CC", "#F580F5",
+    "#FFB3F4", "#E3001B"
+])
+change_norm = mcolors.BoundaryNorm(change_bounds, change_colors.N)
+
+#-------------------------------
 #Gesamtbewölkung-Farben
 #------------------------------
 # Farbskala für Gesamtbewölkung
@@ -298,6 +311,47 @@ for filename in sorted(os.listdir(data_dir)):
         data = ds["sde"].values
         data[data < 0] = np.nan
         data = data * 100  # in cm umrechnen
+    elif var_type == "change_snow":
+        delta_hours = 6  # maximale Stundenänderung
+
+        # alle Dateien sortieren
+        all_files = sorted([f for f in os.listdir(data_dir) if f.endswith(".grib2")])
+        filename_index = all_files.index(filename)
+
+        # aktuelle Datei
+        ds_now = ds
+        lon = ds_now["longitude"].values
+        lat = ds_now["latitude"].values
+        lon2d, lat2d = np.meshgrid(lon, lat)
+
+        # Schneehöhen der aktuellen Datei in Meter
+        snow_now = ds_now["sde"].values
+        snow_now[snow_now < 0] = np.nan
+
+        # Prüfen, ob eine vorherige Datei existiert
+        if filename_index == 0:
+            # keine vorherige Datei → keine Änderung
+            data = np.full_like(snow_now, np.nan)
+            print(f"{filename}: keine vorherige Datei → Änderung = NaN")
+        else:
+            # Index der vorherigen Datei: max. 6 Stunden vorher, sonst weniger
+            prev_index = max(0, filename_index - delta_hours)
+            prev_file = os.path.join(data_dir, all_files[prev_index])
+            ds_prev = cfgrib.open_dataset(prev_file)
+
+            if "sde" not in ds_prev:
+                print(f"Keine sde-Variable in {prev_file}")
+                data = np.full_like(snow_now, np.nan)
+            else:
+                snow_prev = ds_prev["sde"].values
+                snow_prev[snow_prev < 0] = np.nan
+
+                # Änderung in cm
+                data = (snow_now - snow_prev) * 100
+
+                actual_hours = filename_index - prev_index
+                print(f"{filename}: Schneehöhenänderung über {actual_hours}h berechnet")
+
     elif var_type == "cloud":
         if "CLCT" not in ds:
             print(f"Keine CLCT-Variable in {filename}")
@@ -413,6 +467,8 @@ for filename in sorted(os.listdir(data_dir)):
         im = ax.pcolormesh(lon, lat, data, cmap=wind_colors, norm=wind_norm, shading="auto")
     elif var_type == "snow":
         im = ax.pcolormesh(lon2d, lat2d, data, cmap=snow_colors, norm=snow_norm, shading="auto")
+    elif var_type == "change_snow":
+        im = ax.pcolormesh(lon2d, lat2d, data, cmap=change_colors, norm=change_norm, shading="auto")
     elif var_type == "cloud":
         im = ax.pcolormesh(lon, lat, data, cmap=cloud_colors, norm=cloud_norm, shading="auto")
     elif var_type == "twater":
@@ -435,8 +491,8 @@ for filename in sorted(os.listdir(data_dir)):
     # Legende
     legend_h_px = 50
     legend_bottom_px = 45
-    if var_type in ["t2m","tp","tp_acc","cape_ml","dbz_cmax","wind","snow", "cloud", "twater", "snowfall"]:
-        bounds = t2m_bounds if var_type=="t2m" else prec_bounds if var_type=="tp" else tp_acc_bounds if var_type=="tp_acc" else cape_bounds if var_type=="cape_ml" else dbz_bounds if var_type=="dbz_cmax" else wind_bounds if var_type=="wind" else snow_bounds if var_type=="snow" else cloud_bounds if var_type=="cloud" else twater_bounds if var_type=="twater" else snowfall_bounds
+    if var_type in ["t2m","tp","tp_acc","cape_ml","dbz_cmax","wind","snow", "change_snow", "cloud", "twater", "snowfall"]:
+        bounds = t2m_bounds if var_type=="t2m" else prec_bounds if var_type=="tp" else tp_acc_bounds if var_type=="tp_acc" else cape_bounds if var_type=="cape_ml" else dbz_bounds if var_type=="dbz_cmax" else wind_bounds if var_type=="wind" else snow_bounds if var_type=="snow" else change_bounds if var_type=="change_snow" else cloud_bounds if var_type=="cloud" else twater_bounds if var_type=="twater" else snowfall_bounds
         cbar_ax = fig.add_axes([0.03, legend_bottom_px / FIG_H_PX, 0.94, legend_h_px / FIG_H_PX])
         cbar = fig.colorbar(im, cax=cbar_ax, orientation="horizontal", ticks=bounds)
         cbar.ax.tick_params(colors="black", labelsize=7)
@@ -453,6 +509,8 @@ for filename in sorted(os.listdir(data_dir)):
             cbar.set_ticklabels([int(tick) if float(tick).is_integer() else tick for tick in tp_acc_bounds])
         if var_type=="snow":
             cbar.set_ticklabels([int(tick) if float(tick).is_integer() else tick for tick in snow_bounds])
+        if var_type=="change_snow":
+            cbar.set_ticklabels([int(tick) if float(tick).is_integer() else tick for tick in change_bounds])
     else:
         add_ww_legend_bottom(fig, ww_categories, ww_colors_base)
 
@@ -470,6 +528,7 @@ for filename in sorted(os.listdir(data_dir)):
         "cloud": "Gesamtbewölkung (%)",
         "wind": "Windböen (km/h)",
         "snow": "Schneehöhe (cm)",
+        "change_snow": "Schneehöhenänderung, 6Std (cm)",
         "twater": "Gesamtwassergehalt (mm)",
         "snowfall": "Schneefallgrenze (m)",
     }
