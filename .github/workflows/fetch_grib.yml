@@ -289,18 +289,3 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-      
-
-      - name: Delete current workflow run (cleanup artifacts)
-        if: ${{ always() }}
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GH_PAT }}
-          script: |
-            const run_id = context.runId;
-            console.log(`Deleting current workflow run ${run_id}...`);
-            await github.rest.actions.deleteWorkflowRun({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              run_id: run_id
-            });
