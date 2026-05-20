@@ -195,7 +195,7 @@ jobs:
     needs: fetch_and_generate
     strategy:
       matrix:
-        variable: [t2m, ww, tp, tp_acc, wind, cape_ml, dbz_cmax, cloud, twater, snowfall]
+        variable: [t2m, ww, tp, tp_acc, wind, cape_ml, dbz_cmax, cloud, twater, snowfall] #change_snow, snow 
       max-parallel: 10
     steps:
       - name: Checkout Repo
