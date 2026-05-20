@@ -130,18 +130,18 @@ jobs:
             fi
           '
           
-      - name: Download sde GRIB2 files
-        run: |
-          mkdir -p data/snow
-          cd data/snow
-          seq 0 47 | xargs -n 1 -P 12 -I{} bash -c '
-            i_padded=$(printf "%03d" {} )
-            URL="https://opendata.dwd.de/weather/nwp/icon-d2/grib/${{ env.RUN }}/h_snow/icon-d2_germany_regular-lat-lon_single-level_${{ env.DATE }}${{ env.RUN }}_${i_padded}_2d_h_snow.grib2.bz2"
-            wget -O snow_${i_padded}.grib2.bz2 "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
-            if [ -f "snow_${i_padded}.grib2.bz2" ]; then
-              bunzip2 -f snow_${i_padded}.grib2.bz2
-            fi
-          '
+      # - name: Download sde GRIB2 files
+      #   run: |
+      #     mkdir -p data/snow
+      #     cd data/snow
+      #     seq 0 47 | xargs -n 1 -P 12 -I{} bash -c '
+      #       i_padded=$(printf "%03d" {} )
+      #       URL="https://opendata.dwd.de/weather/nwp/icon-d2/grib/${{ env.RUN }}/h_snow/icon-d2_germany_regular-lat-lon_single-level_${{ env.DATE }}${{ env.RUN }}_${i_padded}_2d_h_snow.grib2.bz2"
+      #       wget -O snow_${i_padded}.grib2.bz2 "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
+      #       if [ -f "snow_${i_padded}.grib2.bz2" ]; then
+      #         bunzip2 -f snow_${i_padded}.grib2.bz2
+      #       fi
+      #     '
       - name: Download clct GRIB2 files
         run: |
           mkdir -p data/cloud
@@ -195,8 +195,8 @@ jobs:
     needs: fetch_and_generate
     strategy:
       matrix:
-        variable: [t2m, ww, tp, tp_acc, wind, snow, cape_ml, dbz_cmax, cloud, twater, snowfall, change_snow]
-      max-parallel: 12
+        variable: [t2m, ww, tp, tp_acc, wind, cape_ml, dbz_cmax, cloud, twater, snowfall]
+      max-parallel: 10
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v3
