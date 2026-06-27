@@ -484,6 +484,46 @@ for filename in sorted(os.listdir(data_dir)):
         txt = ax.text(city["lon"]+0.1, city["lat"]+0.1, city["name"], fontsize=9,
                       color="black", weight="bold", zorder=6)
         txt.set_path_effects([path_effects.withStroke(linewidth=1.5, foreground="white")])
+    if var_type == "t2m":
+        margin = 0.5
+        mask = (
+            (lon2d >= extent[0] + margin) & (lon2d <= extent[1] - margin) &
+            (lat2d >= extent[2] + margin) & (lat2d <= extent[3] - margin)
+        )
+        data_masked = np.where(mask, data, np.nan)
+
+        max_idx = np.unravel_index(np.nanargmax(data_masked), data_masked.shape)
+
+        for idx in [max_idx]:
+            val = data_masked[idx]
+            lo = lon2d[idx]
+            la = lat2d[idx]
+            txt = ax.text(lo, la, f"{val:.0f}",
+                          fontsize=14, color="white", fontweight="bold",
+                          ha="center", va="center", zorder=11,
+                          clip_on=True,
+                          transform=ccrs.PlateCarree())
+            txt.set_path_effects([path_effects.withStroke(linewidth=1.5, foreground="black")])
+    elif var_type == "wind":
+        margin = 0.5
+        mask = (
+            (lon2d >= extent[0] + margin) & (lon2d <= extent[1] - margin) &
+            (lat2d >= extent[2] + margin) & (lat2d <= extent[3] - margin)
+        )
+        data_masked = np.where(mask, data, np.nan)
+
+        max_idx = np.unravel_index(np.nanargmax(data_masked), data_masked.shape)
+
+        for idx in [max_idx]:
+            val = data_masked[idx]
+            lo = lon2d[idx]
+            la = lat2d[idx]
+            txt = ax.text(lo, la, f"{val:.0f}",
+                          fontsize=14, color="white", fontweight="bold",
+                          ha="center", va="center", zorder=11,
+                          clip_on=True,
+                          transform=ccrs.PlateCarree())
+            txt.set_path_effects([path_effects.withStroke(linewidth=1.5, foreground="black")])
     ax.add_feature(cfeature.BORDERS, linestyle=":")
     ax.add_feature(cfeature.COASTLINE)
     ax.add_patch(mpatches.Rectangle((0,0),1,1, transform=ax.transAxes, fill=False, color="black", linewidth=2))
