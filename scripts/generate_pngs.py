@@ -493,8 +493,9 @@ for filename in sorted(os.listdir(data_dir)):
         data_masked = np.where(mask, data, np.nan)
 
         max_idx = np.unravel_index(np.nanargmax(data_masked), data_masked.shape)
+        min_idx = np.unravel_index(np.nanargmin(data_masked), data_masked.shape)
 
-        for idx in [max_idx]:
+        for idx in [max_idx, min_idx]:
             val = data_masked[idx]
             lo = lon2d[idx]
             la = lat2d[idx]
