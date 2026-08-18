@@ -248,11 +248,16 @@ def add_ww_legend_bottom(fig, ww_categories, ww_colors_base):
 # ------------------------------
 # Dateien durchgehen
 # ------------------------------
-for filename in sorted(os.listdir(data_dir)):
-    if not filename.endswith(".grib2"):
-        continue
+all_files_global = sorted([f for f in os.listdir(data_dir) if f.endswith(".grib2")])
+
+for filename in all_files_global:
     path = os.path.join(data_dir, filename)
     ds = cfgrib.open_dataset(path)
+
+    # valid_time_utc wird normalerweise weiter unten generisch aus ds ermittelt.
+    # Für "tp" setzen wir es direkt beim Datenladen (siehe unten), weil dort
+    # das ENDE der vollen Stunde (aus der Folge-Datei) gebraucht wird.
+    valid_time_utc_override = None
 
     # Daten je Typ
     if var_type == "t2m":
@@ -267,13 +272,38 @@ for filename in sorted(os.listdir(data_dir)):
             continue
         data = ds[varname].values
     elif var_type == "tp":
+        # ICON-D2: jede Datei deckt EINE Stunde ab mit Substeps [0, .25, .5, .75]
+        # (Lead-Time relativ zum Modelllauf), tp ist seit Laufbeginn akkumuliert.
+        # Für den echten 1h-Niederschlag H:00 -> H+1:00 brauchen wir Step 0 der
+        # aktuellen Datei und Step 0 der NÄCHSTEN Datei.
         tp_var = next((vn for vn in ["tp","tot_prec"] if vn in ds), None)
         if tp_var is None:
             print(f"Keine Niederschlagsvariable in {filename}")
             continue
-        tp_all = ds[tp_var].values
-        data = tp_all[3]-tp_all[0] if tp_all.shape[0]>1 else tp_all[0]
-        data[data<0.1]=np.nan
+
+        idx_now = all_files_global.index(filename)
+        if idx_now + 1 >= len(all_files_global):
+            print(f"{filename}: keine folgende Datei -> 1h-Niederschlag nicht berechenbar, überspringe")
+            continue
+
+        next_path = os.path.join(data_dir, all_files_global[idx_now + 1])
+        ds_next = cfgrib.open_dataset(next_path)
+
+        if tp_var not in ds_next:
+            print(f"Keine Niederschlagsvariable in {all_files_global[idx_now + 1]}")
+            continue
+
+        tp_now_vals = ds[tp_var].values
+        tp_next_vals = ds_next[tp_var].values
+        tp_now = tp_now_vals[0] if tp_now_vals.ndim == 3 else tp_now_vals
+        tp_next = tp_next_vals[0] if tp_next_vals.ndim == 3 else tp_next_vals
+
+        data = tp_next - tp_now
+        data[data < 0.1] = np.nan
+
+        # Beschriftung: Ende der vollen Stunde = Step 0 der nächsten Datei
+        vt_next_raw = ds_next["valid_time"].values
+        valid_time_utc_override = pd.to_datetime(vt_next_raw[0]) if np.ndim(vt_next_raw) > 0 else pd.to_datetime(vt_next_raw)
     elif var_type == "tp_acc":
         if "tp" not in ds:
             print(f"Keine tp-Variable in {filename}")
@@ -315,7 +345,7 @@ for filename in sorted(os.listdir(data_dir)):
         delta_hours = 6  # maximale Stundenänderung
 
         # alle Dateien sortieren
-        all_files = sorted([f for f in os.listdir(data_dir) if f.endswith(".grib2")])
+        all_files = all_files_global
         filename_index = all_files.index(filename)
 
         # aktuelle Datei
@@ -381,7 +411,9 @@ for filename in sorted(os.listdir(data_dir)):
     lat = ds["latitude"].values
     run_time_utc = pd.to_datetime(ds["time"].values) if "time" in ds else None
 
-    if "valid_time" in ds:
+    if valid_time_utc_override is not None:
+        valid_time_utc = valid_time_utc_override
+    elif "valid_time" in ds:
         valid_time_raw = ds["valid_time"].values
         valid_time_utc = pd.to_datetime(valid_time_raw[0]) if np.ndim(valid_time_raw) > 0 else pd.to_datetime(valid_time_raw)
     else:
@@ -496,6 +528,26 @@ for filename in sorted(os.listdir(data_dir)):
         min_idx = np.unravel_index(np.nanargmin(data_masked), data_masked.shape)
 
         for idx in [max_idx, min_idx]:
+            val = data_masked[idx]
+            lo = lon2d[idx]
+            la = lat2d[idx]
+            txt = ax.text(lo, la, f"{val:.0f}",
+                          fontsize=14, color="white", fontweight="bold",
+                          ha="center", va="center", zorder=11,
+                          clip_on=True,
+                          transform=ccrs.PlateCarree())
+            txt.set_path_effects([path_effects.withStroke(linewidth=1.5, foreground="black")])
+    elif var_type == "wind":
+        margin = 0.5
+        mask = (
+            (lon2d >= extent[0] + margin) & (lon2d <= extent[1] - margin) &
+            (lat2d >= extent[2] + margin) & (lat2d <= extent[3] - margin)
+        )
+        data_masked = np.where(mask, data, np.nan)
+
+        max_idx = np.unravel_index(np.nanargmax(data_masked), data_masked.shape)
+
+        for idx in [max_idx]:
             val = data_masked[idx]
             lo = lon2d[idx]
             la = lat2d[idx]
