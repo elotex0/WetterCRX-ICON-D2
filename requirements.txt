@@ -1,5 +1,8 @@
 cfgrib
 xarray
+numpy
+scipy
+Pillow
 matplotlib
 cartopy
 geopandas
