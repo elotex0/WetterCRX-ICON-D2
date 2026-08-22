@@ -118,7 +118,7 @@ def main():
 
     meta = build_meta(args.output_dir, args.run, args.date)
 
-    out_path = os.path.join(args.output_dir, "meta.json")
+    out_path = os.path.join(args.output_dir, "metadata.json")
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
 
