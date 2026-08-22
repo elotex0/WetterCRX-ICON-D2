@@ -118,9 +118,14 @@ def main():
 
     meta = build_meta(args.output_dir, args.run, args.date)
 
-    out_path = os.path.join(args.output_dir, "metadata.json")
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(meta, f, ensure_ascii=False, indent=2)
+    
+
+    # metadata.json liegt **außerhalb** des run-Ordners
+    meta_path = os.path.join(os.path.dirname(png_root), "metadata.json")
+    with open(meta_path, "w") as f:
+        json.dump(metadata, f, indent=2, ensure_ascii=False)
+    
+    print(f"Metadata written to {meta_path}")
 
     total_vars = len(meta["var_types"])
     total_files = sum(v["num_steps"] for v in meta["var_types"].values())
