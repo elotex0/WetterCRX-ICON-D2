@@ -16,16 +16,18 @@ Aufruf:
 wird "date" aus dem fruehesten gefundenen Timestep abgeleitet und "run"
 bleibt leer - die GitHub-Actions-Workflow-Datei kann sie spaeter einfach
 mitgeben.
+
+Keine externen Abhaengigkeiten - laeuft mit reiner Python-Standardbibliothek
+(math statt numpy), damit dieser Schritt in der CI kein pip install braucht.
 """
 
 import argparse
 import json
+import math
 import os
 import re
 import sys
 from datetime import datetime, timezone
-
-import numpy as np
 
 FILENAME_RE = re.compile(r"^(?P<var_type>.+)_(?P<date>\d{8})_(?P<time>\d{4})\.png$")
 
@@ -44,8 +46,8 @@ EARTH_RADIUS = 6378137.0  # Meter, WGS84/Web-Mercator-Kugelradius
 
 
 def lonlat_to_webmercator(lon_deg, lat_deg):
-    x = EARTH_RADIUS * np.radians(lon_deg)
-    y = EARTH_RADIUS * np.log(np.tan(np.pi / 4 + np.radians(lat_deg) / 2))
+    x = EARTH_RADIUS * math.radians(lon_deg)
+    y = EARTH_RADIUS * math.log(math.tan(math.pi / 4 + math.radians(lat_deg) / 2))
     return x, y
 
 
