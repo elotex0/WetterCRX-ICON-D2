@@ -8,6 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       run: ${{ steps.set_run_date.outputs.run }}
+      date: ${{ steps.set_run_date.outputs.date }}
 
     steps:
       - name: Checkout Repo
@@ -262,7 +263,9 @@ jobs:
 
       - name: Generate Metadata
         run: |
-          python scripts/generate_metadata.py icond2/${{ needs.fetch_and_generate.outputs.run }} ${{ needs.fetch_and_generate.outputs.run }} ${{ env.DATE }}
+          python scripts/generate_metadata.py icond2/${{ needs.fetch_and_generate.outputs.run }} \
+            --run "${{ needs.fetch_and_generate.outputs.run }}" \
+            --date "${{ needs.fetch_and_generate.outputs.date }}"
 
       - name: Clean old runs on R2 except current
         run: |
