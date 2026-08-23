@@ -533,7 +533,7 @@ for filename in all_files_global:
     # ---------------------------------
     # Interpolation auf feineres Raster
     # ---------------------------------
-    target_res = 0.015  # ~2.8 km
+    target_res = 0.056  # ~2.8 km
     lon_min, lon_max, lat_min, lat_max = extent
     lon_new = np.arange(lon_min, lon_max + target_res, target_res)
     lat_new = np.arange(lat_min, lat_max + target_res, target_res)
