@@ -46,7 +46,7 @@ jobs:
             19|20|21) RUN=18 ;;
             22|23|00) RUN=21 ;;
           esac
-          DATE=20260822
+          DATE=$(date -u +%Y%m%d)
           # set env variables
           echo "RUN=$RUN" >> $GITHUB_ENV
           echo "DATE=$DATE" >> $GITHUB_ENV
