@@ -110,26 +110,22 @@ def build_meta(output_dir: str, run: str | None, date: str | None):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Baut output/meta.json aus vorhandenen PNGs.")
-    parser.add_argument("output_dir", nargs="?", default="output", help="Ordner mit den PNGs (default: output)")
-    parser.add_argument("--run", default=None, help="Modell-Run, z.B. '18' (kommt spaeter aus der GitHub-Action)")
-    parser.add_argument("--date", default=None, help="Run-Datum YYYYMMDD (kommt spaeter aus der GitHub-Action)")
-    args = parser.parse_args()
+    png_root = sys.argv[1]
+    run = sys.argv[2]
+    date = sys.argv[3] if len(sys.argv) > 3 else datetime.now(timezone.utc).strftime("%Y%m%d")
 
-    meta = build_meta(args.output_dir, args.run, args.date)
+    meta = build_meta(png_root, run, date)
 
-    
-
-    # metadata.json liegt **außerhalb** des run-Ordners
+    # metadata.json liegt außerhalb des run-Ordners
     meta_path = os.path.join(os.path.dirname(png_root), "metadata.json")
     with open(meta_path, "w") as f:
-        json.dump(metadata, f, indent=2, ensure_ascii=False)
-    
+        json.dump(meta, f, indent=2, ensure_ascii=False)
+
     print(f"Metadata written to {meta_path}")
 
     total_vars = len(meta["var_types"])
     total_files = sum(v["num_steps"] for v in meta["var_types"].values())
-    print(f"meta.json geschrieben: {out_path} ({total_vars} var_types, {total_files} Dateien)")
+    print(f"meta.json geschrieben: {meta_path} ({total_vars} var_types, {total_files} Dateien)")
 
 
 if __name__ == "__main__":
