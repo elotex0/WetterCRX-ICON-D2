@@ -1,19 +1,15 @@
 import sys
 import cfgrib
-import matplotlib.pyplot as plt
-import cartopy.crs as ccrs
-import cartopy.feature as cfeature
 import pandas as pd
 import os
-from adjustText import adjust_text
-import matplotlib.colors as mcolors
-import matplotlib.patches as mpatches
-import matplotlib.patheffects as path_effects
 from zoneinfo import ZoneInfo
 from scipy.ndimage import gaussian_filter
 from scipy.interpolate import RegularGridInterpolator
 import numpy as np
+import gc
 from matplotlib.colors import ListedColormap, BoundaryNorm, LinearSegmentedColormap
+import matplotlib.colors as mcolors
+from PIL import Image
 import warnings
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -23,20 +19,8 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 # ------------------------------
 data_dir = sys.argv[1]        # z.B. "output"
 output_dir = sys.argv[2]      # z.B. "output/maps"
-var_type = sys.argv[3]        # 't2m', 'ww', 'tp', 'tp_acc', 'cape_ml', 'dbz_cmax'
+var_type = sys.argv[3]        # 't2m', 'ww', 'tp', 'tp_acc', 'cape_ml', 'dbz_cmax', ...
 os.makedirs(output_dir, exist_ok=True)
-
-# ------------------------------
-# Geo-Daten
-# ------------------------------
-cities = pd.DataFrame({
-    'name': ['Berlin', 'Hamburg', 'München', 'Köln', 'Frankfurt', 'Dresden', 'Stuttgart', 'Düsseldorf',
-             'Nürnberg', 'Erfurt', 'Leipzig', 'Bremen', 'Saarbrücken', 'Hannover', 'Magdeburg'],
-    'lat': [52.52, 53.55, 48.14, 50.94, 50.11, 51.05, 48.78, 51.23,
-            49.45, 50.98, 51.34, 53.08, 49.24, 52.37, 52.13],
-    'lon': [13.40, 9.99, 11.57, 6.96, 8.68, 13.73, 9.18, 6.78,
-            11.08, 11.03, 12.37, 8.80, 6.99, 9.73, 11.62]
-})
 
 ignore_codes = {4}
 
@@ -57,13 +41,13 @@ ww_colors_base = {
     95: "#FF77FF", 96: "#C71585", 99: "#C71585"
 }
 ww_categories = {
-    "Bewölkung": [0, 1 , 2, 3],
+    "Bewölkung": [0, 1, 2, 3],
     "Nebel": [48, 45],
     "Schneeregen": [56, 57],
     "Regen": [61, 63, 65],
     "gefr. Regen": [66, 67],
     "Schnee": [71, 73, 75],
-    "Gewitter": [95,96],
+    "Gewitter": [95, 96],
 }
 
 # ------------------------------
@@ -73,18 +57,16 @@ t2m_bounds = list(range(-36, 50, 2))
 t2m_colors = LinearSegmentedColormap.from_list(
     "t2m_smoooth",
     [
-    "#F675F4", "#F428E9", "#B117B5", "#950CA2", "#640180",
-    "#3E007F", "#00337E", "#005295", "#1292FF", "#49ACFF",
-    "#8FCDFF", "#B4DBFF", "#B9ECDD", "#88D4AD", "#07A125",
-    "#3FC107", "#9DE004", "#E7F700", "#F3CD0A", "#EE5505",
-    "#C81904", "#AF0E14", "#620001", "#C87879", "#FACACA",
-    "#E1E1E1", "#6D6D6D"
+        "#F675F4", "#F428E9", "#B117B5", "#950CA2", "#640180",
+        "#3E007F", "#00337E", "#005295", "#1292FF", "#49ACFF",
+        "#8FCDFF", "#B4DBFF", "#B9ECDD", "#88D4AD", "#07A125",
+        "#3FC107", "#9DE004", "#E7F700", "#F3CD0A", "#EE5505",
+        "#C81904", "#AF0E14", "#620001", "#C87879", "#FACACA",
+        "#E1E1E1", "#6D6D6D"
     ],
-N=len(t2m_bounds)
+    N=len(t2m_bounds)
 )
 t2m_norm = BoundaryNorm(t2m_bounds, ncolors=len(t2m_bounds))
-
-# ------------------------------
 
 # ------------------------------
 # Niederschlags-Farben 1h (tp)
@@ -92,26 +74,28 @@ t2m_norm = BoundaryNorm(t2m_bounds, ncolors=len(t2m_bounds))
 prec_bounds = [0.1, 0.2, 0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
                12, 14, 16, 20, 24, 30, 40, 50, 60, 80, 100, 125]
 prec_colors = ListedColormap([
-    "#B4D7FF","#75BAFF","#349AFF","#0582FF","#0069D2",
-    "#003680","#148F1B","#1ACF06","#64ED07","#FFF32B",
-    "#E9DC01","#F06000","#FF7F26","#FFA66A","#F94E78",
-    "#F71E53","#BE0000","#880000","#64007F","#C201FC",
-    "#DD66FE","#EBA6FF","#F9E7FF","#D4D4D4","#969696"
+    "#B4D7FF", "#75BAFF", "#349AFF", "#0582FF", "#0069D2",
+    "#003680", "#148F1B", "#1ACF06", "#64ED07", "#FFF32B",
+    "#E9DC01", "#F06000", "#FF7F26", "#FFA66A", "#F94E78",
+    "#F71E53", "#BE0000", "#880000", "#64007F", "#C201FC",
+    "#DD66FE", "#EBA6FF", "#F9E7FF", "#D4D4D4"
 ])
+prec_colors.set_under(alpha=0)
 prec_norm = mcolors.BoundaryNorm(prec_bounds, prec_colors.N)
 
 # ------------------------------
 # Aufsummierter Niederschlag (tp_acc)
 # ------------------------------
 tp_acc_bounds = [0.1, 1, 2, 3, 5, 7, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80, 90, 100,
-                 125, 150, 175, 200, 250, 300, 400, 500]
+                  125, 150, 175, 200, 250, 300, 400, 500]
 tp_acc_colors = ListedColormap([
-    "#B4D7FF","#75BAFF","#349AFF","#0582FF","#0069D2",
-    "#003680","#148F1B","#1ACF06","#64ED07","#FFF32B",
-    "#E9DC01","#F06000","#FF7F26","#FFA66A","#F94E78",
-    "#F71E53","#BE0000","#880000","#64007F","#C201FC",
-    "#DD66FE","#EBA6FF","#F9E7FF","#D4D4D4","#969696"
+    "#B4D7FF", "#75BAFF", "#349AFF", "#0582FF", "#0069D2",
+    "#003680", "#148F1B", "#1ACF06", "#64ED07", "#FFF32B",
+    "#E9DC01", "#F06000", "#FF7F26", "#FFA66A", "#F94E78",
+    "#F71E53", "#BE0000", "#880000", "#64007F", "#C201FC",
+    "#DD66FE", "#EBA6FF", "#F9E7FF", "#D4D4D4", "#969696"
 ])
+tp_acc_colors.set_under(alpha=0)
 tp_acc_norm = mcolors.BoundaryNorm(tp_acc_bounds, tp_acc_colors.N)
 
 # ------------------------------
@@ -119,8 +103,8 @@ tp_acc_norm = mcolors.BoundaryNorm(tp_acc_bounds, tp_acc_colors.N)
 # ------------------------------
 cape_bounds = [0, 20, 40, 60, 80, 100, 200, 400, 600, 800, 1000, 1500, 2000, 2500, 3000]
 cape_colors = ListedColormap([
-    "#676767", "#006400", "#008000", "#00CC00", "#66FF00", "#FFFF00", 
-    "#FFCC00", "#FF9900", "#FF6600", "#FF3300", "#FF0000", "#FF0095", 
+    "#676767", "#006400", "#008000", "#00CC00", "#66FF00", "#FFFF00",
+    "#FFCC00", "#FF9900", "#FF6600", "#FF3300", "#FF0000", "#FF0095",
     "#FC439F", "#FF88D3", "#FF99FF"
 ])
 cape_norm = mcolors.BoundaryNorm(cape_bounds, cape_colors.N)
@@ -128,15 +112,16 @@ cape_norm = mcolors.BoundaryNorm(cape_bounds, cape_colors.N)
 # ------------------------------
 # DBZ-CMAX Farben
 # ------------------------------
-dbz_bounds = [0, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60, 63, 67, 70]
+dbz_bounds = [ 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60, 63, 67, 70]
 dbz_colors = ListedColormap([
-    "#676767", "#FFFFFF", "#B3EFED", "#8CE7E2", "#00F5ED",
+    "#FFFFFF", "#B3EFED", "#8CE7E2", "#00F5ED",
     "#00CEF0", "#01AFF4", "#028DF6", "#014FF7", "#0000F6",
     "#00FF01", "#01DF00", "#00D000", "#00BF00", "#00A701",
     "#019700", "#FFFF00", "#F9F000", "#EDD200", "#E7B500",
     "#FF5000", "#FF2801", "#F40000", "#EA0001", "#CC0000",
     "#FFC8FF", "#E9A1EA", "#D379D3", "#BE55BE", "#960E96"
 ])
+dbz_colors.set_under(alpha=0)
 dbz_norm = mcolors.BoundaryNorm(dbz_bounds, dbz_colors.N)
 
 # ------------------------------
@@ -152,22 +137,21 @@ wind_colors = ListedColormap([
 ])
 wind_norm = mcolors.BoundaryNorm(wind_bounds, wind_colors.N)
 
-#-------------------------------
+# ------------------------------
 # Schneehöhen-Farben
-#------------------------------
-snow_bounds = [0, 0.1, 0.5, 1, 2, 3, 4, 5, 7, 10, 15, 20, 30, 40, 50, 60, 70, 80, 100, 150, 200, 250, 300, 400]  # in cm
+# ------------------------------
+snow_bounds = [0, 0.1, 0.5, 1, 2, 3, 4, 5, 7, 10, 15, 20, 30, 40, 50, 60, 70, 80, 100, 150, 200, 250, 300, 400]
 snow_colors = ListedColormap([
-        "#F8F8F8", "#DCDBFA", "#AAA9C8", "#75BAFF", "#349AFF", "#0582FF",
-        "#0069D2", "#004F9C", "#01327F", "#4B007F", "#64007F", "#9101BB",
-        "#C300FC", "#D235FF", "#EBA6FF", "#F4CEFF", "#FAB2CA", "#FF9798",
-        "#FE6E6E", "#DF093F", "#BE0000", "#A40000", "#880000", "#460000"
-    ])
+    "#F8F8F8", "#DCDBFA", "#AAA9C8", "#75BAFF", "#349AFF", "#0582FF",
+    "#0069D2", "#004F9C", "#01327F", "#4B007F", "#64007F", "#9101BB",
+    "#C300FC", "#D235FF", "#EBA6FF", "#F4CEFF", "#FAB2CA", "#FF9798",
+    "#FE6E6E", "#DF093F", "#BE0000", "#A40000", "#880000", "#460000"
+])
 snow_norm = mcolors.BoundaryNorm(snow_bounds, snow_colors.N)
 
-#-------------------------------
+# ------------------------------
 # Schneehöhen-Änderung-Farben
-#------------------------------
-
+# ------------------------------
 change_bounds = [-30, -15, -7, -3, -1, -0.1, 0, 0.1, 0.5, 2, 4, 6, 10, 15, 30, 50, 75, 100]
 change_colors = ListedColormap([
     "#D66900", "#F1A30D", "#F7E521", "#78C239", "#24B301",
@@ -177,11 +161,10 @@ change_colors = ListedColormap([
 ])
 change_norm = mcolors.BoundaryNorm(change_bounds, change_colors.N)
 
-#-------------------------------
-#Gesamtbewölkung-Farben
-#------------------------------
-# Farbskala für Gesamtbewölkung
-cloud_bounds = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]  # in cm
+# ------------------------------
+# Gesamtbewölkung-Farben
+# ------------------------------
+cloud_bounds = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 cloud_colors = ListedColormap([
     "#FFFF00", "#EEEE0B", "#DDDD17", "#CCCC22", "#BBBB2E",
     "#ABAB39", "#9A9A45", "#898950", "#78785C", "#676767"
@@ -189,61 +172,174 @@ cloud_colors = ListedColormap([
 cloud_norm = mcolors.BoundaryNorm(cloud_bounds, cloud_colors.N)
 
 # ------------------------------
-#Gesamtwassergehalt
+# Gesamtwassergehalt
 # ------------------------------
-twater_bounds = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90]  # in mm
+twater_bounds = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90]
 twater_colors = ListedColormap([
-        "#6E4A00", "#B49E62", "#D7CD13", "#B9F019", "#1ACF06",
-        "#08534C", "#035DBE", "#2692FF", "#75BAFF", "#CBBFFF",
-        "#EBA6FF", "#DD66FE", "#AC01DD", "#7C009E", "#673775",
-        "#6B6B6B", "#818181", "#969696"
-    ])
-
+    "#6E4A00", "#B49E62", "#D7CD13", "#B9F019", "#1ACF06",
+    "#08534C", "#035DBE", "#2692FF", "#75BAFF", "#CBBFFF",
+    "#EBA6FF", "#DD66FE", "#AC01DD", "#7C009E", "#673775",
+    "#6B6B6B", "#818181", "#969696"
+])
 twater_norm = mcolors.BoundaryNorm(twater_bounds, twater_colors.N)
-#---------------------
-#Schneefallgrenze
-#---------------------
+
+# ------------------------------
+# Schneefallgrenze
+# ------------------------------
 snowfall_bounds = [0, 100, 250, 500, 750, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000]
 snowfall_colors = ListedColormap([
     "#FF00A6", "#D900FF", "#8C00FF", "#0008FF", "#0099FF",
     "#00F2FF", "#1AFF00", "#FFFB00", "#FFBF00", "#FFA600",
-    "#FF6F00", "#930000", 
+    "#FF6F00", "#930000",
 ])
-
 snowfall_norm = mcolors.BoundaryNorm(snowfall_bounds, snowfall_colors.N)
 
 # ------------------------------
-# Kartenparameter
+# Bounding Box ICON-D2 (fix)
 # ------------------------------
-FIG_W_PX, FIG_H_PX = 880, 830
-BOTTOM_AREA_PX = 179
-TOP_AREA_PX = FIG_H_PX - BOTTOM_AREA_PX
-TARGET_ASPECT = FIG_W_PX / TOP_AREA_PX
+# Offizielle Domäne des regulären ICON-D2-Gitters des DWD:
+# 43.18°N-58.08°N, 3.94°W-20.34°E (0.02°-Gitter, 1215 x 746 Zellen).
+extent = [-3.94, 20.34, 43.18, 58.08]  # lon_min, lon_max, lat_min, lat_max
 
-# Bounding Box Deutschland (fix, keine GeoJSON nötig)
-extent = [5, 16, 47, 56]
+FOOTER_TEXTS = {
+    "ww": "Signifikantes Wetter",
+    "t2m": "Temperatur 2m (°C)",
+    "tp": "Niederschlag, 1Std (mm)",
+    "tp_acc": "Akkumulierter Niederschlag (mm)",
+    "cape_ml": "CAPE-Index (J/kg)",
+    "dbz_cmax": "Sim. max. Radarreflektivität (dBZ)",
+    "cloud": "Gesamtbewölkung (%)",
+    "wind": "Windböen (km/h)",
+    "snow": "Schneehöhe (cm)",
+    "change_snow": "Schneehöhenänderung, 6Std (cm)",
+    "twater": "Gesamtwassergehalt (mm)",
+    "snowfall": "Schneefallgrenze (m)",
+}
+
+# Einheit je Variable - für die Wertanzeige im Frontend
+VALUE_UNITS = {
+    "ww": "",
+    "t2m": "°C",
+    "tp": "mm",
+    "tp_acc": "mm",
+    "cape_ml": "J/kg",
+    "dbz_cmax": "dBZ",
+    "cloud": "%",
+    "wind": "km/h",
+    "snow": "cm",
+    "change_snow": "cm",
+    "twater": "mm",
+    "snowfall": "m",
+}
+
+# Nachkommastellen je Variable für die Wertanzeige
+VALUE_DECIMALS = {
+    "ww": 0,
+    "t2m": 1,
+    "tp": 1,
+    "tp_acc": 1,
+    "cape_ml": 0,
+    "dbz_cmax": 0,
+    "cloud": 0,
+    "wind": 0,
+    "snow": 1,
+    "change_snow": 1,
+    "twater": 1,
+    "snowfall": 0,
+}
+
+# Sentinel-Wert für "kein Datum/außerhalb" (nicht mehr für Binärdatei
+# benötigt, aber zur Referenz im Manifest praktisch)
+VALUE_NODATA = -9999.0
 
 # ------------------------------
-# WW-Legende Funktion
+# EPSG:4326 -> EPSG:3857 (Web Mercator)
 # ------------------------------
-def add_ww_legend_bottom(fig, ww_categories, ww_colors_base):
-    legend_height = 0.12
-    legend_ax = fig.add_axes([0.05, 0.01, 0.9, legend_height])
-    legend_ax.axis("off")
-    for i, (label, codes) in enumerate(ww_categories.items()):
-        n_colors = len(codes)
-        block_width = 1.0 / len(ww_categories)
-        gap = 0.05 * block_width
-        x0 = i * block_width
-        x1 = (i + 1) * block_width
-        inner_width = x1 - x0 - gap
-        color_width = inner_width / n_colors
-        for j, c in enumerate(codes):
-            color = ww_colors_base.get(c, "#FFFFFF")
-            legend_ax.add_patch(mpatches.Rectangle((x0 + j * color_width, 0.3),
-                                                  color_width, 0.6,
-                                                  facecolor=color, edgecolor='black'))
-        legend_ax.text((x0 + x1)/2, 0.05, label, ha='center', va='bottom', fontsize=10)
+# Leaflet/OSM rendern intern in Web Mercator (EPSG:3857). Unsere GRIB-Daten
+# liegen als Plattkarte (EPSG:4326, gleichmäßiges lon/lat-Raster) vor. Ein
+# L.imageOverlay dehnt ein rohes EPSG:4326-Bild einfach linear in die
+# angegebenen Lat/Lon-Bounds - das ist bei Deutschlands Breitengraden
+# (47-56°N) sichtbar falsch (Nord-Süd-Stauchung/Streckung, ca. +20-30%
+# Unterschied zwischen Süd- und Nordrand). Daher wird das Datenfeld hier
+# vor dem Speichern explizit nach EPSG:3857 umprojiziert, sodass es 1:1
+# in die (weiterhin in Lat/Lon angegebenen) Overlay-Bounds passt.
+EARTH_RADIUS = 6378137.0  # Meter, WGS84/Web-Mercator-Kugelradius
+WEBMERCATOR_WIDTH = 1024   # Ziel-Bildbreite in Pixeln für die Reprojektion
+
+
+def lonlat_to_webmercator(lon_deg, lat_deg):
+    x = EARTH_RADIUS * np.radians(lon_deg)
+    y = EARTH_RADIUS * np.log(np.tan(np.pi / 4 + np.radians(lat_deg) / 2))
+    return x, y
+
+
+def webmercator_target_grid(extent, out_width=WEBMERCATOR_WIDTH):
+    lon_min, lon_max, lat_min, lat_max = extent
+    x_min, y_min = lonlat_to_webmercator(lon_min, lat_min)
+    x_max, y_max = lonlat_to_webmercator(lon_max, lat_max)
+    aspect = (y_max - y_min) / (x_max - x_min)
+    out_height = max(int(round(out_width * aspect)), 1)
+    x_new = np.linspace(x_min, x_max, out_width)
+    y_new = np.linspace(y_min, y_max, out_height)  # aufsteigend: Süd -> Nord
+    return x_new, y_new
+
+
+def warp_equirect_to_webmercator(data, lon, lat, extent, method="linear",
+                                  out_width=WEBMERCATOR_WIDTH):
+    """data/lon/lat: reguläres EPSG:4326-Gitter, lon und lat aufsteigend
+    sortiert. Gibt das Datenfeld auf einem regulären EPSG:3857-Pixelraster
+    zurück (ebenfalls Süd -> Nord aufsteigend)."""
+    x_new, y_new = webmercator_target_grid(extent, out_width=out_width)
+    xx, yy = np.meshgrid(x_new, y_new)
+    lon_grid = np.degrees(xx / EARTH_RADIUS)
+    lat_grid = np.degrees(2 * np.arctan(np.exp(yy / EARTH_RADIUS)) - np.pi / 2)
+
+    interp_func = RegularGridInterpolator(
+        (lat, lon), data,
+        method=method,
+        bounds_error=False,
+        fill_value=np.nan
+    )
+    pts = np.array([lat_grid.ravel(), lon_grid.ravel()]).T
+    warped = interp_func(pts).reshape(lat_grid.shape)
+    return warped
+
+
+# Feste Kartendomäne (ICON-D2-Box) einmalig nach EPSG:3857 (Meter)
+# umgerechnet - das ist der "imageExtent", den OpenLayers' ImageStatic-
+# Quelle direkt in Kartenkoordinaten erwartet (kein weiteres Strecken
+# nötig, da das Bild bereits auf genau dieses Raster projiziert wurde).
+_dom_x_min, _dom_y_min = lonlat_to_webmercator(extent[0], extent[2])
+_dom_x_max, _dom_y_max = lonlat_to_webmercator(extent[1], extent[3])
+DOMAIN_EXTENT_3857 = [float(_dom_x_min), float(_dom_y_min), float(_dom_x_max), float(_dom_y_max)]
+
+
+def data_to_rgba(data, cmap, norm):
+    """Wandelt ein 2D-Datenarray in ein RGBA-uint8-Array um.
+    NaN-Werte werden komplett transparent."""
+    rgba = cmap(norm(data))  # float RGBA in [0,1], shape (H,W,4)
+    rgba = (rgba * 255).astype(np.uint8)
+    nan_mask = ~np.isfinite(data)
+    rgba[nan_mask, 3] = 0
+    return rgba
+
+
+def save_transparent_webp(data, cmap, norm, out_path):
+    rgba = data_to_rgba(data, cmap, norm)
+    img = Image.fromarray(rgba[::-1, :, :], mode="RGBA")
+
+    # Verlustfrei speichern: die Colormaps arbeiten mit diskreten Stufen
+    # und set_under(alpha=0) für Transparenz - eine verlustbehaftete
+    # WebP-Kompression würde Farbgrenzen und den Transparenz-Threshold
+    # sichtbar verwischen.
+    #
+    # method=4 statt 6: bei diesen Bildern (große einfarbige/transparente
+    # Flächen, wenige diskrete Farbstufen) liefert method=6 praktisch
+    # dieselbe Dateigröße wie method=4, braucht dabei aber ~100x länger
+    # (gemessen: 3.9s vs. 0.04s pro Bild) - der höhere Aufwand bringt hier
+    # also keinen Vorteil, kostet aber massiv Laufzeit.
+    img.save(out_path, format="WEBP", lossless=True, method=4)
+
 
 # ------------------------------
 # Dateien durchgehen
@@ -254,36 +350,34 @@ for filename in all_files_global:
     path = os.path.join(data_dir, filename)
     ds = cfgrib.open_dataset(path)
 
-    # valid_time_utc wird normalerweise weiter unten generisch aus ds ermittelt.
-    # Für "tp" setzen wir es direkt beim Datenladen (siehe unten), weil dort
-    # das ENDE der vollen Stunde (aus der Folge-Datei) gebraucht wird.
     valid_time_utc_override = None
+    lon2d = lat2d = None  # nur gesetzt, falls im Zweig gebraucht
 
-    # Daten je Typ
+    # Daten je Typ (Logik unverändert aus dem Original übernommen)
     if var_type == "t2m":
         if "t2m" not in ds:
             print(f"Keine t2m in {filename}")
+            ds.close()
             continue
         data = ds["t2m"].values - 273.15
     elif var_type == "ww":
-        varname = next((vn for vn in ds.data_vars if vn.lower() in ["ww","weather"]), None)
+        varname = next((vn for vn in ds.data_vars if vn.lower() in ["ww", "weather"]), None)
         if varname is None:
             print(f"Keine WW in {filename}")
+            ds.close()
             continue
         data = ds[varname].values
     elif var_type == "tp":
-        # ICON-D2: jede Datei deckt EINE Stunde ab mit Substeps [0, .25, .5, .75]
-        # (Lead-Time relativ zum Modelllauf), tp ist seit Laufbeginn akkumuliert.
-        # Für den echten 1h-Niederschlag H:00 -> H+1:00 brauchen wir Step 0 der
-        # aktuellen Datei und Step 0 der NÄCHSTEN Datei.
-        tp_var = next((vn for vn in ["tp","tot_prec"] if vn in ds), None)
+        tp_var = next((vn for vn in ["tp", "tot_prec"] if vn in ds), None)
         if tp_var is None:
             print(f"Keine Niederschlagsvariable in {filename}")
+            ds.close()
             continue
 
         idx_now = all_files_global.index(filename)
         if idx_now + 1 >= len(all_files_global):
             print(f"{filename}: keine folgende Datei -> 1h-Niederschlag nicht berechenbar, überspringe")
+            ds.close()
             continue
 
         next_path = os.path.join(data_dir, all_files_global[idx_now + 1])
@@ -291,6 +385,8 @@ for filename in all_files_global:
 
         if tp_var not in ds_next:
             print(f"Keine Niederschlagsvariable in {all_files_global[idx_now + 1]}")
+            ds_next.close()
+            ds.close()
             continue
 
         tp_now_vals = ds[tp_var].values
@@ -299,72 +395,56 @@ for filename in all_files_global:
         tp_next = tp_next_vals[0] if tp_next_vals.ndim == 3 else tp_next_vals
 
         data = tp_next - tp_now
-        data[data < 0.1] = np.nan
 
-        # Beschriftung: Ende der vollen Stunde = Step 0 der nächsten Datei
         vt_next_raw = ds_next["valid_time"].values
         valid_time_utc_override = pd.to_datetime(vt_next_raw[0]) if np.ndim(vt_next_raw) > 0 else pd.to_datetime(vt_next_raw)
+        ds_next.close()
     elif var_type == "tp_acc":
         if "tp" not in ds:
             print(f"Keine tp-Variable in {filename}")
+            ds.close()
             continue
-        lon = ds["longitude"].values
-        lat = ds["latitude"].values
-        lon2d, lat2d = np.meshgrid(lon, lat)
         data = ds["tp"].isel(step=0).values
-        data[data < 0.1] = np.nan
     elif var_type == "cape_ml":
         if "CAPE_ML" not in ds:
             print(f"Keine CAPE_ML-Variable in {filename}")
+            ds.close()
             continue
         data = ds["CAPE_ML"].values[0, :, :]
-        data[data<0]=np.nan
+        data[data < 0] = np.nan
     elif var_type == "dbz_cmax":
         if "DBZ_CMAX" not in ds:
             print(f"Keine DBZ_CMAX in {filename}")
+            ds.close()
             continue
         data = ds["DBZ_CMAX"].values
     elif var_type == "wind":
         if "fg10" not in ds:
             print(f"Keine passende Windvariable in {filename}")
+            ds.close()
             continue
         data = ds["fg10"].values
         data[data < 0] = np.nan
-        data = data * 3.6  # m/s → km/h
+        data = data * 3.6  # m/s -> km/h
     elif var_type == "snow":
         if "sde" not in ds:
             print(f"Keine sde-Variable in {filename}")
+            ds.close()
             continue
-        lon = ds["longitude"].values
-        lat = ds["latitude"].values
-        lon2d, lat2d = np.meshgrid(lon, lat)
         data = ds["sde"].values
         data[data < 0] = np.nan
-        data = data * 100  # in cm umrechnen
+        data = data * 100  # -> cm
     elif var_type == "change_snow":
-        delta_hours = 6  # maximale Stundenänderung
-
-        # alle Dateien sortieren
+        delta_hours = 6
         all_files = all_files_global
         filename_index = all_files.index(filename)
 
-        # aktuelle Datei
-        ds_now = ds
-        lon = ds_now["longitude"].values
-        lat = ds_now["latitude"].values
-        lon2d, lat2d = np.meshgrid(lon, lat)
+        snow_now = ds["sde"].values
 
-        # Schneehöhen der aktuellen Datei in Meter
-        snow_now = ds_now["sde"].values
-        snow_now[snow_now < 0] = np.nan
-
-        # Prüfen, ob eine vorherige Datei existiert
         if filename_index == 0:
-            # keine vorherige Datei → keine Änderung
             data = np.full_like(snow_now, np.nan)
-            print(f"{filename}: keine vorherige Datei → Änderung = NaN")
+            print(f"{filename}: keine vorherige Datei -> Änderung = NaN")
         else:
-            # Index der vorherigen Datei: max. 6 Stunden vorher, sonst weniger
             prev_index = max(0, filename_index - delta_hours)
             prev_file = os.path.join(data_dir, all_files[prev_index])
             ds_prev = cfgrib.open_dataset(prev_file)
@@ -375,37 +455,38 @@ for filename in all_files_global:
             else:
                 snow_prev = ds_prev["sde"].values
                 snow_prev[snow_prev < 0] = np.nan
-
-                # Änderung in cm
                 data = (snow_now - snow_prev) * 100
-
                 actual_hours = filename_index - prev_index
                 print(f"{filename}: Schneehöhenänderung über {actual_hours}h berechnet")
-
+            ds_prev.close()
     elif var_type == "cloud":
         if "CLCT" not in ds:
             print(f"Keine CLCT-Variable in {filename}")
+            ds.close()
             continue
         data = ds["CLCT"].values
         data[data < 0] = np.nan
     elif var_type == "twater":
         if "TWATER" not in ds:
             print(f"Keine TWATER-Variable in {filename}")
+            ds.close()
             continue
         data = ds["TWATER"].values
         data[data < 0] = np.nan
     elif var_type == "snowfall":
         if "SNOWLMT" not in ds:
             print(f"Keine SNOWLMT-Variable in {filename} ds.keys(): {list(ds.keys())}")
+            ds.close()
             continue
         data = ds["SNOWLMT"].values
         data[data < 0] = np.nan
     else:
         print(f"Unbekannter var_type {var_type}")
+        ds.close()
         continue
 
-    if data.ndim==3:
-        data=data[0]
+    if data.ndim == 3:
+        data = data[0]
 
     lon = ds["longitude"].values
     lat = ds["latitude"].values
@@ -421,222 +502,99 @@ for filename in all_files_global:
         valid_time_utc = run_time_utc + step
     valid_time_local = valid_time_utc.tz_localize("UTC").astimezone(ZoneInfo("Europe/Berlin"))
 
-    # --------------------------
-    # Figure
-    # --------------------------
-    scale = 0.9
-    fig = plt.figure(figsize=(FIG_W_PX/100*scale, FIG_H_PX/100*scale), dpi=100)
-    shift_up = 0.02
-    ax = fig.add_axes([0.0, BOTTOM_AREA_PX / FIG_H_PX + shift_up, 1.0, TOP_AREA_PX / FIG_H_PX],
-                      projection=ccrs.PlateCarree())
-    ax.set_extent(extent)
-    ax.set_axis_off()
-    ax.set_aspect('auto')
-
     # ---------------------------------
-    # 🔍 Interpolation auf feineres Raster (optional)
+    # Natives ICON-D2-Gitter beibehalten (keine Interpolation auf ein
+    # feineres/anderes Raster mehr) - lediglich sicherstellen, dass lat/lon
+    # aufsteigend sortiert sind, da RegularGridInterpolator (in
+    # warp_equirect_to_webmercator) das voraussetzt.
     # ---------------------------------
-    target_res = 0.015  # Zielauflösung in Grad (~2.8 km)
-    lon_min, lon_max, lat_min, lat_max = extent
-    lon_new = np.arange(lon_min, lon_max + target_res, target_res)
-    lat_new = np.arange(lat_min, lat_max + target_res, target_res)
-    lon2d_new, lat2d_new = np.meshgrid(lon_new, lat_new)
-
-    # Nur interpolieren, wenn Daten reguläres 2D-Gitter haben
     if lon.ndim == 1 and lat.ndim == 1 and data.ndim == 2:
-        try:
-            if var_type == "ww":
-                # 🧱 Kategorische Interpolation: nearest-neighbor
-                interp_func = RegularGridInterpolator(
-                    (lat[::-1], lon),
-                    data[::-1, :],
-                    method="nearest",          # <--- WICHTIG
-                    bounds_error=False,
-                    fill_value=np.nan
-                )
-            else:
-                # 🌈 Kontinuierliche Interpolation: linear
-                interp_func = RegularGridInterpolator(
-                    (lat[::-1], lon),
-                    data[::-1, :],
-                    method="linear",
-                    bounds_error=False,
-                    fill_value=np.nan
-                )
+        if lat[0] > lat[-1]:
+            lat = lat[::-1]
+            data = data[::-1, :]
+        if lon[0] > lon[-1]:
+            lon = lon[::-1]
+            data = data[:, ::-1]
 
-            pts = np.array([lat2d_new.ravel(), lon2d_new.ravel()]).T
-            data = interp_func(pts).reshape(lat2d_new.shape)
-            lon, lat = lon_new, lat_new
-            lon2d, lat2d = lon2d_new, lat2d_new
-        except Exception as e:
-            print(f"Interpolation übersprungen ({e})")
+    # data ist jetzt (lat aufsteigend, lon aufsteigend) sortiert,
+    # Zeile 0 = Süden. Für save_transparent_webp reicht das - dort wird
+    # zum Speichern vertikal gespiegelt (Bildzeile 0 = Norden).
 
-    # Plot
+    # ------------------------------
+    # Farb-/Kategorie-Mapping je Typ
+    # ------------------------------
     if var_type == "t2m":
-        im = ax.pcolormesh(lon, lat, data, cmap=t2m_colors, norm=t2m_norm, shading="auto") 
-
+        cmap, norm = t2m_colors, t2m_norm
+        render_data = data
     elif var_type == "ww":
         valid_mask = np.isfinite(data)
         codes = np.unique(data[valid_mask]).astype(int)
         codes = [c for c in codes if c in ww_colors_base and c not in ignore_codes]
         codes.sort()
-        cmap = ListedColormap([ww_colors_base[c] for c in codes])
+        cmap = ListedColormap([ww_colors_base[c] for c in codes]) if codes else ListedColormap(["#FFFFFF00"])
+        norm = mcolors.Normalize(vmin=-0.5, vmax=max(len(codes) - 0.5, 0.5))
         code2idx = {c: i for i, c in enumerate(codes)}
         idx_data = np.full_like(data, fill_value=np.nan, dtype=float)
-        for c,i in code2idx.items():
-            idx_data[data==c]=i
-        im = ax.pcolormesh(lon, lat, idx_data, cmap=cmap, vmin=-0.5, vmax=len(codes)-0.5, shading="auto")
+        for c, i in code2idx.items():
+            idx_data[data == c] = i
+        render_data = idx_data
     elif var_type == "tp":
-        im = ax.pcolormesh(lon, lat, data, cmap=prec_colors, norm=prec_norm, shading="auto")
+        cmap, norm = prec_colors, prec_norm
+        render_data = data
     elif var_type == "tp_acc":
-        im = ax.pcolormesh(lon2d, lat2d, data, cmap=tp_acc_colors, norm=tp_acc_norm, shading="auto")
+        cmap, norm = tp_acc_colors, tp_acc_norm
+        render_data = data
     elif var_type == "cape_ml":
-        im = ax.pcolormesh(lon, lat, data, cmap=cape_colors, norm=cape_norm, shading="auto")
+        cmap, norm = cape_colors, cape_norm
+        render_data = data
     elif var_type == "dbz_cmax":
-        data_fine = gaussian_filter(data, sigma=0.8)
-        im = ax.pcolormesh(lon, lat, data_fine, cmap=dbz_colors, norm=dbz_norm, shading="auto")
+        render_data = gaussian_filter(data, sigma=0.8)
+        cmap, norm = dbz_colors, dbz_norm
     elif var_type == "wind":
-        im = ax.pcolormesh(lon, lat, data, cmap=wind_colors, norm=wind_norm, shading="auto")
+        cmap, norm = wind_colors, wind_norm
+        render_data = data
     elif var_type == "snow":
-        im = ax.pcolormesh(lon2d, lat2d, data, cmap=snow_colors, norm=snow_norm, shading="auto")
+        cmap, norm = snow_colors, snow_norm
+        render_data = data
     elif var_type == "change_snow":
-        im = ax.pcolormesh(lon2d, lat2d, data, cmap=change_colors, norm=change_norm, shading="auto")
+        cmap, norm = change_colors, change_norm
+        render_data = data
     elif var_type == "cloud":
-        im = ax.pcolormesh(lon, lat, data, cmap=cloud_colors, norm=cloud_norm, shading="auto")
+        cmap, norm = cloud_colors, cloud_norm
+        render_data = data
     elif var_type == "twater":
-        im = ax.pcolormesh(lon, lat, data, cmap=twater_colors, norm=twater_norm, shading="auto")
+        cmap, norm = twater_colors, twater_norm
+        render_data = data
     elif var_type == "snowfall":
-        im = ax.pcolormesh(lon, lat, data, cmap=snowfall_colors, norm=snowfall_norm, shading="auto")
-
-    # Bundesländer-Grenzen aus Cartopy (statt GeoJSON)
-    ax.add_feature(cfeature.STATES.with_scale("10m"), edgecolor="#2C2C2C", linewidth=1)
-    for _, city in cities.iterrows():
-        ax.plot(city["lon"], city["lat"], "o", markersize=6, markerfacecolor="black",
-                markeredgecolor="white", markeredgewidth=1.5, zorder=5)
-        txt = ax.text(city["lon"]+0.1, city["lat"]+0.1, city["name"], fontsize=9,
-                      color="black", weight="bold", zorder=6)
-        txt.set_path_effects([path_effects.withStroke(linewidth=1.5, foreground="white")])
-    if var_type == "t2m":
-        margin = 0.5
-        mask = (
-            (lon2d >= extent[0] + margin) & (lon2d <= extent[1] - margin) &
-            (lat2d >= extent[2] + margin) & (lat2d <= extent[3] - margin)
-        )
-        data_masked = np.where(mask, data, np.nan)
-
-        max_idx = np.unravel_index(np.nanargmax(data_masked), data_masked.shape)
-        min_idx = np.unravel_index(np.nanargmin(data_masked), data_masked.shape)
-
-        for idx in [max_idx, min_idx]:
-            val = data_masked[idx]
-            lo = lon2d[idx]
-            la = lat2d[idx]
-            txt = ax.text(lo, la, f"{val:.0f}",
-                          fontsize=14, color="white", fontweight="bold",
-                          ha="center", va="center", zorder=11,
-                          clip_on=True,
-                          transform=ccrs.PlateCarree())
-            txt.set_path_effects([path_effects.withStroke(linewidth=1.5, foreground="black")])
-    elif var_type == "wind":
-        margin = 0.5
-        mask = (
-            (lon2d >= extent[0] + margin) & (lon2d <= extent[1] - margin) &
-            (lat2d >= extent[2] + margin) & (lat2d <= extent[3] - margin)
-        )
-        data_masked = np.where(mask, data, np.nan)
-
-        max_idx = np.unravel_index(np.nanargmax(data_masked), data_masked.shape)
-
-        for idx in [max_idx]:
-            val = data_masked[idx]
-            lo = lon2d[idx]
-            la = lat2d[idx]
-            txt = ax.text(lo, la, f"{val:.0f}",
-                          fontsize=14, color="white", fontweight="bold",
-                          ha="center", va="center", zorder=11,
-                          clip_on=True,
-                          transform=ccrs.PlateCarree())
-            txt.set_path_effects([path_effects.withStroke(linewidth=1.5, foreground="black")])
-    elif var_type == "wind":
-        margin = 0.5
-        mask = (
-            (lon2d >= extent[0] + margin) & (lon2d <= extent[1] - margin) &
-            (lat2d >= extent[2] + margin) & (lat2d <= extent[3] - margin)
-        )
-        data_masked = np.where(mask, data, np.nan)
-
-        max_idx = np.unravel_index(np.nanargmax(data_masked), data_masked.shape)
-
-        for idx in [max_idx]:
-            val = data_masked[idx]
-            lo = lon2d[idx]
-            la = lat2d[idx]
-            txt = ax.text(lo, la, f"{val:.0f}",
-                          fontsize=14, color="white", fontweight="bold",
-                          ha="center", va="center", zorder=11,
-                          clip_on=True,
-                          transform=ccrs.PlateCarree())
-            txt.set_path_effects([path_effects.withStroke(linewidth=1.5, foreground="black")])
-    ax.add_feature(cfeature.BORDERS, linestyle=":")
-    ax.add_feature(cfeature.COASTLINE)
-    ax.add_patch(mpatches.Rectangle((0,0),1,1, transform=ax.transAxes, fill=False, color="black", linewidth=2))
-
-    # Legende
-    legend_h_px = 50
-    legend_bottom_px = 45
-    if var_type in ["t2m","tp","tp_acc","cape_ml","dbz_cmax","wind","snow", "change_snow", "cloud", "twater", "snowfall"]:
-        bounds = t2m_bounds if var_type=="t2m" else prec_bounds if var_type=="tp" else tp_acc_bounds if var_type=="tp_acc" else cape_bounds if var_type=="cape_ml" else dbz_bounds if var_type=="dbz_cmax" else wind_bounds if var_type=="wind" else snow_bounds if var_type=="snow" else change_bounds if var_type=="change_snow" else cloud_bounds if var_type=="cloud" else twater_bounds if var_type=="twater" else snowfall_bounds
-        cbar_ax = fig.add_axes([0.03, legend_bottom_px / FIG_H_PX, 0.94, legend_h_px / FIG_H_PX])
-        cbar = fig.colorbar(im, cax=cbar_ax, orientation="horizontal", ticks=bounds)
-        cbar.ax.tick_params(colors="black", labelsize=7)
-        cbar.outline.set_edgecolor("black")
-        cbar.ax.set_facecolor("white")
-
-        if var_type == "t2m":
-            tick_labels = [str(tick) if tick % 4 == 0 else "" for tick in bounds]
-            cbar.set_ticklabels(tick_labels)
-
-        if var_type=="tp":
-            cbar.set_ticklabels([int(tick) if float(tick).is_integer() else tick for tick in prec_bounds])
-        if var_type=="tp_acc":
-            cbar.set_ticklabels([int(tick) if float(tick).is_integer() else tick for tick in tp_acc_bounds])
-        if var_type=="snow":
-            cbar.set_ticklabels([int(tick) if float(tick).is_integer() else tick for tick in snow_bounds])
-        if var_type=="change_snow":
-            cbar.set_ticklabels([int(tick) if float(tick).is_integer() else tick for tick in change_bounds])
+        cmap, norm = snowfall_colors, snowfall_norm
+        render_data = data
     else:
-        add_ww_legend_bottom(fig, ww_categories, ww_colors_base)
+        ds.close()
+        continue
 
-    # Footer
-    footer_ax = fig.add_axes([0.0, (legend_bottom_px + legend_h_px)/FIG_H_PX, 1.0,
-                              (BOTTOM_AREA_PX - legend_h_px - legend_bottom_px)/FIG_H_PX])
-    footer_ax.axis("off")
-    footer_texts = {
-        "ww": "Signifikantes Wetter",
-        "t2m": "Temperatur 2m (°C)",
-        "tp": "Niederschlag, 1Std (mm)",
-        "tp_acc": "Akkumulierter Niederschlag (mm)",
-        "cape_ml": "CAPE-Index (J/kg)",
-        "dbz_cmax": "Sim. max. Radarreflektivität (dBZ)",
-        "cloud": "Gesamtbewölkung (%)",
-        "wind": "Windböen (km/h)",
-        "snow": "Schneehöhe (cm)",
-        "change_snow": "Schneehöhenänderung, 6Std (cm)",
-        "twater": "Gesamtwassergehalt (mm)",
-        "snowfall": "Schneefallgrenze (m)",
-    }
+    # ------------------------------
+    # Nach EPSG:3857 (Web Mercator) umprojizieren
+    # ------------------------------
+    merc_method = "nearest" if var_type == "ww" else "linear"
+    render_data_merc = warp_equirect_to_webmercator(
+        render_data, lon, lat, extent, method=merc_method
+    )
 
-    left_text = footer_texts.get(var_type, var_type) + \
-                f"\nICON-D2 ({pd.to_datetime(run_time_utc).hour:02d}z), Deutscher Wetterdienst" \
-                if run_time_utc is not None else \
-                footer_texts.get(var_type, var_type) + "\nICON-D2 (??z), Deutscher Wetterdienst"
+    # ------------------------------
+    # Transparentes WebP speichern
+    # ------------------------------
+    outname = f"{var_type}_{valid_time_local:%Y%m%d_%H%M}.webp"
+    out_path = os.path.join(output_dir, outname)
+    save_transparent_webp(render_data_merc, cmap, norm, out_path)
 
-    footer_ax.text(0.01, 0.85, left_text, fontsize=12, fontweight="bold", va="top", ha="left")
-    footer_ax.text(0.734, 0.92, "Prognose für:", fontsize=12, va="top", ha="left", fontweight="bold")
-    footer_ax.text(0.99, 0.68, f"{valid_time_local:%d.%m.%Y %H:%M} Uhr",
-                   fontsize=12, va="top", ha="right", fontweight="bold")
+    print(f"{filename} -> {outname}")
 
-    # Speichern
-    outname = f"{var_type}_{valid_time_local:%Y%m%d_%H%M}.png"
-    plt.savefig(os.path.join(output_dir, outname), dpi=100, bbox_inches=None, pad_inches=0)
-    plt.close()
+    # ------------------------------
+    # Aufräumen - wichtig bei vielen Dateien in der Schleife!
+    # ------------------------------
+    # cfgrib/xarray hält sonst Dateihandles + gepufferte Arrays offen und
+    # der Speicherverbrauch wächst über die Schleife hinweg immer weiter
+    # an, bis irgendwann selbst kleine Allokationen fehlschlagen.
+    ds.close()
+    del data, render_data, render_data_merc
+    gc.collect()
