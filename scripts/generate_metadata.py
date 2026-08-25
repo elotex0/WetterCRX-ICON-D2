@@ -2,7 +2,7 @@
 Baut eine zentrale meta.json aus allen erzeugten PNGs in output/.
 
 Erwartetes Dateinamensschema (wie von den Rendering-Skripten erzeugt):
-    {var_type}_{YYYYMMDD}_{HHMM}.png
+    {var_type}_{YYYYMMDD}_{HHMM}.wepb
 
 var_type darf selbst Unterstriche enthalten (z.B. "tp_acc", "dbz_cmax",
 "change_snow") - das Skript erkennt das Zeitstempel-Suffix per Regex und
@@ -29,7 +29,7 @@ import re
 import sys
 from datetime import datetime, timezone
 
-FILENAME_RE = re.compile(r"^(?P<var_type>.+)_(?P<date>\d{8})_(?P<time>\d{4})\.png$")
+FILENAME_RE = re.compile(r"^(?P<var_type>.+)_(?P<date>\d{8})_(?P<time>\d{4})\.webp$")
 
 # ------------------------------
 # Bounding Box: volle ICON-D2-Modelldomain (fix)
