@@ -74,7 +74,7 @@ t2m_norm = BoundaryNorm(t2m_bounds, ncolors=len(t2m_bounds))
 prec_bounds = [0.0, 0.1, 0.2, 0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
                12, 14, 16, 20, 24, 30, 40, 50, 60, 80, 100, 125]
 prec_colors = ListedColormap([
-    "FFFFFFF", "#B4D7FF", "#75BAFF", "#349AFF", "#0582FF", "#0069D2",
+    "#FFFFFFF", "#B4D7FF", "#75BAFF", "#349AFF", "#0582FF", "#0069D2",
     "#003680", "#148F1B", "#1ACF06", "#64ED07", "#FFF32B",
     "#E9DC01", "#F06000", "#FF7F26", "#FFA66A", "#F94E78",
     "#F71E53", "#BE0000", "#880000", "#64007F", "#C201FC",
@@ -88,7 +88,7 @@ prec_norm = mcolors.BoundaryNorm(prec_bounds, prec_colors.N)
 tp_acc_bounds = [0.0, 0.1, 1, 2, 3, 5, 7, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80, 90, 100,
                   125, 150, 175, 200, 250, 300, 400, 500]
 tp_acc_colors = ListedColormap([
-    "FFFFFFF", "#B4D7FF", "#75BAFF", "#349AFF", "#0582FF", "#0069D2",
+    "#FFFFFFF", "#B4D7FF", "#75BAFF", "#349AFF", "#0582FF", "#0069D2",
     "#003680", "#148F1B", "#1ACF06", "#64ED07", "#FFF32B",
     "#E9DC01", "#F06000", "#FF7F26", "#FFA66A", "#F94E78",
     "#F71E53", "#BE0000", "#880000", "#64007F", "#C201FC",
