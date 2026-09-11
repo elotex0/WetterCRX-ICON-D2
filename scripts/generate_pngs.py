@@ -28,7 +28,7 @@ ignore_codes = {4}
 
 # Für welche Variablen die echten Werte zusätzlich als DVAL-Chunk
 # ins WebP eingebettet werden sollen (kein separates File nötig).
-EMBED_DATA_VARS = {"t2m", "wind"}
+EMBED_DATA_VARS = {"t2m", "wind", "tp", "tp_acc"}
 
 # ------------------------------
 # WW-Farben
@@ -419,6 +419,8 @@ DVAL_FOURCC = b"DVAL"
 QUANTUM_STEP = {
     "t2m": 0.05,   # °C, Anzeige mit 1 Dezimalstelle -> 0.05 ist mehr als genug
     "wind": 0.2,   # km/h, Anzeige mit 0 Dezimalstellen -> 0.2 ist mehr als genug
+    "tp": 0.1,     # mm, Anzeige mit 1 Dezimalstelle -> 0.1 ist mehr als genug
+    "tp_acc": 0.1  # mm, Anzeige mit 1 Dezimalstelle -> 0.1 ist mehr als genug
 }
 NAN_SENTINEL_I16 = -32768
 
@@ -725,7 +727,12 @@ for filename in all_files_global:
     if var_type in EMBED_DATA_VARS:
         germany_data = crop_to_germany(render_data_merc)          # row0 = Süden
         quantum = QUANTUM_STEP.get(var_type, 0.1)
-        embed_data_chunk(out_path, germany_data[::-1], GERMANY_CROP_EXTENT_3857, quantum)  # row0 = Norden
+        embed_source = germany_data[::-1] 
+
+        if var_type in ("tp", "tp_acc"):
+            embed_source = np.where(embed_source < 0.1, np.nan, embed_source)
+
+        embed_data_chunk(out_path, embed_source, GERMANY_CROP_EXTENT_3857, quantum)  # row0 = Norden
 
     print(f"{filename} -> {outname}")
 
