@@ -11,7 +11,7 @@ jobs:
 
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           token: ${{ secrets.GH_PAT }}
 
@@ -199,7 +199,7 @@ jobs:
       max-parallel: 10
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Python
         uses: actions/setup-python@v7
@@ -241,7 +241,7 @@ jobs:
     needs: [fetch_and_generate, generate_pngs]
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Download all PNGs artifact
         uses: actions/download-artifact@v8
