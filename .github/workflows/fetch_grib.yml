@@ -197,7 +197,7 @@ jobs:
     needs: fetch_and_generate
     strategy:
       matrix:
-        variable: [t2m, ww, tp, tp_acc, wind, cape_ml, dbz_cmax, cloud, twater, snowfall, change_snow, snow] #change_snow, snow 
+        variable: [t2m, ww, tp, tp_acc, wind, cape_ml, dbz_cmax, cloud, twater, snowfall, change_snow, snow]
       max-parallel: 12
     steps:
       - name: Checkout Repo
@@ -266,6 +266,12 @@ jobs:
         run: |
           python scripts/generate_metadata.py icond2/${{ needs.fetch_and_generate.outputs.run }} ${{ needs.fetch_and_generate.outputs.run }} ${{ env.DATE }}
 
+      - name: Rohdateien mit gzip komprimieren
+        run: |
+          find icond2/${{ needs.fetch_and_generate.outputs.run }} -type f | while read -r f; do
+            gzip -9 -n -c "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+          done
+
       - name: Clean old runs on R2 except current
         run: |
           for run_folder in $(aws s3 ls s3://${{ secrets.R2_BUCKET }}/icon-d2/ --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com | awk '{print $2}' | sed 's#/##'); do
@@ -281,7 +287,8 @@ jobs:
         run: |
           # Upload run folder
           aws s3 sync ./icond2/${{ needs.fetch_and_generate.outputs.run }}/ s3://${{ secrets.R2_BUCKET }}/icon-d2/${{ needs.fetch_and_generate.outputs.run }}/ \
-            --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+            --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com \
+            --content-encoding gzip --content-type application/octet-stream \
 
           # Upload metadata.json outside run folder
           aws s3 cp ./icond2/metadata.json s3://${{ secrets.R2_BUCKET }}/icon-d2/metadata.json \

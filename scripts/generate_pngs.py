@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 import numpy as np
 import gc
 import warnings
+from encoding_config import NODATA_U8, LEVELS, ENCODING
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -17,34 +18,6 @@ data_dir = sys.argv[1]        # z.B. "output"
 output_dir = sys.argv[2]      # z.B. "output/maps"
 var_type = sys.argv[3]        # 't2m', 'ww', 'tp', 'tp_acc', 'cape_ml', 'dbz_cmax', ...
 os.makedirs(output_dir, exist_ok=True)
-
-# ------------------------------
-# uint8-Kodierung je Variable
-# ------------------------------
-# Stufen: 0..254 = Wert, 255 = NoData.
-# transform:
-#   "linear": u = (v - vmin) / (vmax - vmin)
-#   "sqrt"  : u = sqrt((v - vmin) / (vmax - vmin))       (feiner bei kleinen Werten)
-#   "ssqrt" : u = (sign(v)*sqrt(|v|/vmax) + 1) / 2        (vmin = -vmax, fein um 0)
-#   "raw"   : q = Wert direkt (nur für Wettercodes)
-# q = round(u * 254)
-NODATA_U8 = 255
-LEVELS = 254
-
-ENCODING = {
-    "t2m":         {"vmin": -35.0, "vmax": 45.0,   "transform": "linear", "unit": "°C"},
-    "wind":        {"vmin": 0.0,   "vmax": 250.0,  "transform": "linear", "unit": "km/h"},
-    "tp":          {"vmin": 0.0,   "vmax": 125.0,  "transform": "sqrt",   "unit": "mm"},
-    "tp_acc":      {"vmin": 0.0,   "vmax": 500.0,  "transform": "sqrt",   "unit": "mm"},
-    "cape_ml":     {"vmin": 0.0,   "vmax": 5000.0, "transform": "sqrt",   "unit": "J/kg"},
-    "dbz_cmax":    {"vmin": -20.0, "vmax": 80.0,   "transform": "linear", "unit": "dBZ"},
-    "cloud":       {"vmin": 0.0,   "vmax": 100.0,  "transform": "linear", "unit": "%"},
-    "snow":        {"vmin": 0.0,   "vmax": 400.0,  "transform": "sqrt",   "unit": "cm"},
-    "change_snow": {"vmin": -100.0, "vmax": 100.0, "transform": "ssqrt",  "unit": "cm"},
-    "twater":      {"vmin": 0.0,   "vmax": 100.0,  "transform": "linear", "unit": "mm"},
-    "snowfall":    {"vmin": 0.0,   "vmax": 6000.0, "transform": "linear", "unit": "m"},
-    "ww":          {"vmin": 0.0,   "vmax": 254.0,  "transform": "raw",    "unit": ""},
-}
 
 if var_type not in ENCODING:
     print(f"Unbekannter var_type {var_type}")
