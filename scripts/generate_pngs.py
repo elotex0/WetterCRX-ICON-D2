@@ -278,7 +278,7 @@ for filename in all_files_global:
     height, width = q.shape
     meta["width"], meta["height"] = int(width), int(height)
 
-    outname = f"{var_type}_{valid_time_local:%Y%m%d_%H%M}.bin"
+    outname = f"{var_type}_{valid_time_local:%Y%m%d_%H%M}"
     out_path = os.path.join(output_dir, outname)
     np.ascontiguousarray(q, dtype=np.uint8).tofile(out_path)
 
