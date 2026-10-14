@@ -288,7 +288,7 @@ jobs:
           # Upload run folder
           aws s3 sync ./icond2/${{ needs.fetch_and_generate.outputs.run }}/ s3://${{ secrets.R2_BUCKET }}/icon-d2/${{ needs.fetch_and_generate.outputs.run }}/ \
             --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com \
-            --content-encoding gzip --content-type application/octet-stream \
+            --content-type application/gzip \
 
           # Upload metadata.json outside run folder
           aws s3 cp ./icond2/metadata.json s3://${{ secrets.R2_BUCKET }}/icon-d2/metadata.json \
