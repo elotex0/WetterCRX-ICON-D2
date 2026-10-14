@@ -1,17 +1,11 @@
 import sys
+import json
 import cfgrib
 import pandas as pd
 import os
-import struct
-import zlib
 from zoneinfo import ZoneInfo
-from scipy.ndimage import gaussian_filter
-from scipy.interpolate import RegularGridInterpolator
 import numpy as np
 import gc
-from matplotlib.colors import ListedColormap, BoundaryNorm, LinearSegmentedColormap
-import matplotlib.colors as mcolors
-from PIL import Image
 import warnings
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -24,455 +18,69 @@ output_dir = sys.argv[2]      # z.B. "output/maps"
 var_type = sys.argv[3]        # 't2m', 'ww', 'tp', 'tp_acc', 'cape_ml', 'dbz_cmax', ...
 os.makedirs(output_dir, exist_ok=True)
 
-ignore_codes = {4}
-
-# Für welche Variablen die echten Werte zusätzlich als DVAL-Chunk
-# ins WebP eingebettet werden sollen (kein separates File nötig).
-EMBED_DATA_VARS = {"t2m", "wind", "tp", "tp_acc", "cape_ml", "change_snow"}
-
 # ------------------------------
-# WW-Farben
+# uint8-Kodierung je Variable
 # ------------------------------
-ww_colors_base = {
-    0: "#FFFFFF", 1: "#D3D3D3", 2: "#A9A9A9", 3: "#696969",
-    45: "#FFFF00", 48: "#FFD700",
-    56: "#FFA500", 57: "#C06A00",
-    51: "#00FF00", 53: "#00C300", 55: "#009700",
-    61: "#00FF00", 63: "#00C300", 65: "#009700",
-    80: "#00FF00", 81: "#00C300", 82: "#009700",
-    66: "#FF6347", 67: "#8B0000",
-    71: "#ADD8E6", 73: "#6495ED", 75: "#00008B",
-    85: "#ADD8E6", 86: "#6495ED",
-    77: "#ADD8E6",
-    95: "#FF77FF", 96: "#C71585", 99: "#C71585"
-}
-ww_categories = {
-    "Bewölkung": [0, 1, 2, 3],
-    "Nebel": [48, 45],
-    "Schneeregen": [56, 57],
-    "Regen": [61, 63, 65],
-    "gefr. Regen": [66, 67],
-    "Schnee": [71, 73, 75],
-    "Gewitter": [95, 96],
+# Stufen: 0..254 = Wert, 255 = NoData.
+# transform:
+#   "linear": u = (v - vmin) / (vmax - vmin)
+#   "sqrt"  : u = sqrt((v - vmin) / (vmax - vmin))       (feiner bei kleinen Werten)
+#   "ssqrt" : u = (sign(v)*sqrt(|v|/vmax) + 1) / 2        (vmin = -vmax, fein um 0)
+#   "raw"   : q = Wert direkt (nur für Wettercodes)
+# q = round(u * 254)
+NODATA_U8 = 255
+LEVELS = 254
+
+ENCODING = {
+    "t2m":         {"vmin": -35.0, "vmax": 45.0,   "transform": "linear", "unit": "°C"},
+    "wind":        {"vmin": 0.0,   "vmax": 250.0,  "transform": "linear", "unit": "km/h"},
+    "tp":          {"vmin": 0.0,   "vmax": 125.0,  "transform": "sqrt",   "unit": "mm"},
+    "tp_acc":      {"vmin": 0.0,   "vmax": 500.0,  "transform": "sqrt",   "unit": "mm"},
+    "cape_ml":     {"vmin": 0.0,   "vmax": 5000.0, "transform": "sqrt",   "unit": "J/kg"},
+    "dbz_cmax":    {"vmin": -20.0, "vmax": 80.0,   "transform": "linear", "unit": "dBZ"},
+    "cloud":       {"vmin": 0.0,   "vmax": 100.0,  "transform": "linear", "unit": "%"},
+    "snow":        {"vmin": 0.0,   "vmax": 400.0,  "transform": "sqrt",   "unit": "cm"},
+    "change_snow": {"vmin": -100.0, "vmax": 100.0, "transform": "ssqrt",  "unit": "cm"},
+    "twater":      {"vmin": 0.0,   "vmax": 100.0,  "transform": "linear", "unit": "mm"},
+    "snowfall":    {"vmin": 0.0,   "vmax": 6000.0, "transform": "linear", "unit": "m"},
+    "ww":          {"vmin": 0.0,   "vmax": 254.0,  "transform": "raw",    "unit": ""},
 }
 
-# ------------------------------
-# Temperatur-Farben
-# ------------------------------
-t2m_bounds = list(range(-36, 50, 2))
-t2m_colors = LinearSegmentedColormap.from_list(
-    "t2m_smoooth",
-    [
-        "#F675F4", "#F428E9", "#B117B5", "#950CA2", "#640180",
-        "#3E007F", "#00337E", "#005295", "#1292FF", "#49ACFF",
-        "#8FCDFF", "#B4DBFF", "#B9ECDD", "#88D4AD", "#07A125",
-        "#3FC107", "#9DE004", "#E7F700", "#F3CD0A", "#EE5505",
-        "#C81904", "#AF0E14", "#620001", "#C87879", "#FACACA",
-        "#E1E1E1", "#6D6D6D"
-    ],
-    N=len(t2m_bounds)
-)
-t2m_norm = BoundaryNorm(t2m_bounds, ncolors=len(t2m_bounds))
+if var_type not in ENCODING:
+    print(f"Unbekannter var_type {var_type}")
+    sys.exit(1)
+enc = ENCODING[var_type]
 
-# ------------------------------
-# Niederschlags-Farben 1h (tp)
-# ------------------------------
-prec_bounds = [0.0, 0.1, 0.2, 0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
-               12, 14, 16, 20, 24, 30, 40, 50, 60, 80, 100, 125]
-prec_colors = ListedColormap([
-    "#FFFFFF", "#B4D7FF", "#75BAFF", "#349AFF", "#0582FF", "#0069D2",
-    "#003680", "#148F1B", "#1ACF06", "#64ED07", "#FFF32B",
-    "#E9DC01", "#F06000", "#FF7F26", "#FFA66A", "#F94E78",
-    "#F71E53", "#BE0000", "#880000", "#64007F", "#C201FC",
-    "#DD66FE", "#EBA6FF", "#F9E7FF", "#D4D4D4"
-])
-prec_norm = mcolors.BoundaryNorm(prec_bounds, prec_colors.N)
 
-# ------------------------------
-# Aufsummierter Niederschlag (tp_acc)
-# ------------------------------
-tp_acc_bounds = [0.0, 0.1, 1, 2, 3, 5, 7, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80, 90, 100,
-                  125, 150, 175, 200, 250, 300, 400, 500]
-tp_acc_colors = ListedColormap([
-    "#FFFFFF", "#B4D7FF", "#75BAFF", "#349AFF", "#0582FF", "#0069D2",
-    "#003680", "#148F1B", "#1ACF06", "#64ED07", "#FFF32B",
-    "#E9DC01", "#F06000", "#FF7F26", "#FFA66A", "#F94E78",
-    "#F71E53", "#BE0000", "#880000", "#64007F", "#C201FC",
-    "#DD66FE", "#EBA6FF", "#F9E7FF", "#D4D4D4", "#969696"
-])
-tp_acc_norm = mcolors.BoundaryNorm(tp_acc_bounds, tp_acc_colors.N)
+def encode_uint8(data, enc):
+    """float-Array (NaN erlaubt) -> uint8-Array (255 = NoData)."""
+    nan_mask = ~np.isfinite(data)
+    vmin, vmax, tr = enc["vmin"], enc["vmax"], enc["transform"]
+    d = np.where(nan_mask, vmin, data).astype(np.float64)
 
-# ------------------------------
-# CAPE-Farben
-# ------------------------------
-cape_bounds = [0, 20, 40, 60, 80, 100, 200, 400, 600, 800, 1000, 1500, 2000, 2500, 3000]
-cape_colors = ListedColormap([
-    "#676767", "#006400", "#008000", "#00CC00", "#66FF00", "#FFFF00",
-    "#FFCC00", "#FF9900", "#FF6600", "#FF3300", "#FF0000", "#FF0095",
-    "#FC439F", "#FF88D3", "#FF99FF"
-])
-cape_norm = mcolors.BoundaryNorm(cape_bounds, cape_colors.N)
+    if tr == "raw":
+        q = np.clip(np.rint(d), 0, LEVELS)
+    else:
+        d = np.clip(d, vmin, vmax)
+        if tr == "linear":
+            u = (d - vmin) / (vmax - vmin)
+        elif tr == "sqrt":
+            u = np.sqrt((d - vmin) / (vmax - vmin))
+        elif tr == "ssqrt":
+            u = (np.sign(d) * np.sqrt(np.abs(d) / vmax) + 1.0) / 2.0
+        else:
+            raise ValueError(tr)
+        q = np.rint(u * LEVELS)
 
-# ------------------------------
-# DBZ-CMAX Farben
-# ------------------------------
-dbz_bounds = [0, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60, 63, 67, 70]
-dbz_colors = ListedColormap([
-    "#676767","#FFFFFF", "#B3EFED", "#8CE7E2", "#00F5ED",
-    "#00CEF0", "#01AFF4", "#028DF6", "#014FF7", "#0000F6",
-    "#00FF01", "#01DF00", "#00D000", "#00BF00", "#00A701",
-    "#019700", "#FFFF00", "#F9F000", "#EDD200", "#E7B500",
-    "#FF5000", "#FF2801", "#F40000", "#EA0001", "#CC0000",
-    "#FFC8FF", "#E9A1EA", "#D379D3", "#BE55BE", "#960E96"
-])
-dbz_norm = mcolors.BoundaryNorm(dbz_bounds, dbz_colors.N)
+    q = q.astype(np.uint8)
+    q[nan_mask] = NODATA_U8
+    return q
 
-# ------------------------------
-# Windböen-Farben
-# ------------------------------
-wind_bounds = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 180, 200, 220, 240, 260, 280, 300]
-wind_colors = ListedColormap([
-    "#68AD05", "#8DC00B", "#B1D415", "#D5E81C", "#FBFC22",
-    "#FAD024", "#F9A427", "#FC7929", "#FB4D2B", "#EA2B57",
-    "#FB22A5", "#FC22CE", "#FC22F5", "#FC62F8", "#FD80F8",
-    "#FFBFFC", "#FEDFFE", "#FEFFFF", "#E1E0FF", "#C3C3FF",
-    "#A5A5FF", "#A5A5FF", "#6868FE"
-])
-wind_norm = mcolors.BoundaryNorm(wind_bounds, wind_colors.N)
-
-# ------------------------------
-# Schneehöhen-Farben
-# ------------------------------
-snow_bounds = [0, 0.1, 0.5, 1, 2, 3, 4, 5, 7, 10, 15, 20, 30, 40, 50, 60, 70, 80, 100, 150, 200, 250, 300, 400]
-snow_colors = ListedColormap([
-    "#F8F8F8", "#DCDBFA", "#AAA9C8", "#75BAFF", "#349AFF", "#0582FF",
-    "#0069D2", "#004F9C", "#01327F", "#4B007F", "#64007F", "#9101BB",
-    "#C300FC", "#D235FF", "#EBA6FF", "#F4CEFF", "#FAB2CA", "#FF9798",
-    "#FE6E6E", "#DF093F", "#BE0000", "#A40000", "#880000", "#460000"
-])
-snow_norm = mcolors.BoundaryNorm(snow_bounds, snow_colors.N)
-
-# ------------------------------
-# Schneehöhen-Änderung-Farben
-# ------------------------------
-change_bounds = [-30, -15, -7, -3, -1, -0.1, 0, 0.1, 0.5, 2, 4, 6, 10, 15, 30, 50, 75, 100]
-change_colors = ListedColormap([
-    "#D66900", "#F1A30D", "#F7E521", "#78C239", "#24B301",
-    "#FFFFFF", "#FFFFFF", "#57A2E3", "#2A78CD", "#124FA8",
-    "#2116B0", "#42069C", "#9E009B", "#CB00CC", "#F580F5",
-    "#FFB3F4", "#E3001B"
-])
-change_norm = mcolors.BoundaryNorm(change_bounds, change_colors.N)
-
-# ------------------------------
-# Gesamtbewölkung-Farben
-# ------------------------------
-cloud_bounds = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-cloud_colors = ListedColormap([
-    "#FFFF00", "#EEEE0B", "#DDDD17", "#CCCC22", "#BBBB2E",
-    "#ABAB39", "#9A9A45", "#898950", "#78785C", "#676767"
-])
-cloud_norm = mcolors.BoundaryNorm(cloud_bounds, cloud_colors.N)
-
-# ------------------------------
-# Gesamtwassergehalt
-# ------------------------------
-twater_bounds = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90]
-twater_colors = ListedColormap([
-    "#6E4A00", "#B49E62", "#D7CD13", "#B9F019", "#1ACF06",
-    "#08534C", "#035DBE", "#2692FF", "#75BAFF", "#CBBFFF",
-    "#EBA6FF", "#DD66FE", "#AC01DD", "#7C009E", "#673775",
-    "#6B6B6B", "#818181", "#969696"
-])
-twater_norm = mcolors.BoundaryNorm(twater_bounds, twater_colors.N)
-
-# ------------------------------
-# Schneefallgrenze
-# ------------------------------
-snowfall_bounds = [0, 100, 250, 500, 750, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000]
-snowfall_colors = ListedColormap([
-    "#FF00A6", "#D900FF", "#8C00FF", "#0008FF", "#0099FF",
-    "#00F2FF", "#1AFF00", "#FFFB00", "#FFBF00", "#FFA600",
-    "#FF6F00", "#930000",
-])
-snowfall_norm = mcolors.BoundaryNorm(snowfall_bounds, snowfall_colors.N)
 
 # ------------------------------
 # Bounding Box ICON-D2 (fix)
 # ------------------------------
-# Offizielle Domäne des regulären ICON-D2-Gitters des DWD:
-# 43.18°N-58.08°N, 3.94°W-20.34°E (0.02°-Gitter, 1215 x 746 Zellen).
 extent = [-3.94, 20.34, 43.18, 58.08]  # lon_min, lon_max, lat_min, lat_max
-
-FOOTER_TEXTS = {
-    "ww": "Signifikantes Wetter",
-    "t2m": "Temperatur 2m (°C)",
-    "tp": "Niederschlag, 1Std (mm)",
-    "tp_acc": "Akkumulierter Niederschlag (mm)",
-    "cape_ml": "CAPE-Index (J/kg)",
-    "dbz_cmax": "Sim. max. Radarreflektivität (dBZ)",
-    "cloud": "Gesamtbewölkung (%)",
-    "wind": "Windböen (km/h)",
-    "snow": "Schneehöhe (cm)",
-    "change_snow": "Schneehöhenänderung, 6Std (cm)",
-    "twater": "Gesamtwassergehalt (mm)",
-    "snowfall": "Schneefallgrenze (m)",
-}
-
-# Einheit je Variable - für die Wertanzeige im Frontend
-VALUE_UNITS = {
-    "ww": "",
-    "t2m": "°C",
-    "tp": "mm",
-    "tp_acc": "mm",
-    "cape_ml": "J/kg",
-    "dbz_cmax": "dBZ",
-    "cloud": "%",
-    "wind": "km/h",
-    "snow": "cm",
-    "change_snow": "cm",
-    "twater": "mm",
-    "snowfall": "m",
-}
-
-# Nachkommastellen je Variable für die Wertanzeige
-VALUE_DECIMALS = {
-    "ww": 0,
-    "t2m": 1,
-    "tp": 1,
-    "tp_acc": 1,
-    "cape_ml": 0,
-    "dbz_cmax": 0,
-    "cloud": 0,
-    "wind": 0,
-    "snow": 1,
-    "change_snow": 1,
-    "twater": 1,
-    "snowfall": 0,
-}
-
-# Sentinel-Wert für "kein Datum/außerhalb" (nicht mehr für Binärdatei
-# benötigt, aber zur Referenz im Manifest praktisch)
-VALUE_NODATA = -9999.0
-
-# ------------------------------
-# EPSG:4326 -> EPSG:3857 (Web Mercator)
-# ------------------------------
-# Leaflet/OSM rendern intern in Web Mercator (EPSG:3857). Unsere GRIB-Daten
-# liegen als Plattkarte (EPSG:4326, gleichmäßiges lon/lat-Raster) vor. Ein
-# L.imageOverlay dehnt ein rohes EPSG:4326-Bild einfach linear in die
-# angegebenen Lat/Lon-Bounds - das ist bei Deutschlands Breitengraden
-# (47-56°N) sichtbar falsch (Nord-Süd-Stauchung/Streckung, ca. +20-30%
-# Unterschied zwischen Süd- und Nordrand). Daher wird das Datenfeld hier
-# vor dem Speichern explizit nach EPSG:3857 umprojiziert, sodass es 1:1
-# in die (weiterhin in Lat/Lon angegebenen) Overlay-Bounds passt.
-EARTH_RADIUS = 6378137.0  # Meter, WGS84/Web-Mercator-Kugelradius
-WEBMERCATOR_WIDTH = 1024   # Ziel-Bildbreite in Pixeln für die Reprojektion
-
-
-def lonlat_to_webmercator(lon_deg, lat_deg):
-    x = EARTH_RADIUS * np.radians(lon_deg)
-    y = EARTH_RADIUS * np.log(np.tan(np.pi / 4 + np.radians(lat_deg) / 2))
-    return x, y
-
-
-def webmercator_target_grid(extent, out_width=WEBMERCATOR_WIDTH):
-    lon_min, lon_max, lat_min, lat_max = extent
-    x_min, y_min = lonlat_to_webmercator(lon_min, lat_min)
-    x_max, y_max = lonlat_to_webmercator(lon_max, lat_max)
-    aspect = (y_max - y_min) / (x_max - x_min)
-    out_height = max(int(round(out_width * aspect)), 1)
-    x_new = np.linspace(x_min, x_max, out_width)
-    y_new = np.linspace(y_min, y_max, out_height)  # aufsteigend: Süd -> Nord
-    return x_new, y_new
-
-
-def warp_equirect_to_webmercator(data, lon, lat, extent, method="linear",
-                                  out_width=WEBMERCATOR_WIDTH):
-    """data/lon/lat: reguläres EPSG:4326-Gitter, lon und lat aufsteigend
-    sortiert. Gibt das Datenfeld auf einem regulären EPSG:3857-Pixelraster
-    zurück (ebenfalls Süd -> Nord aufsteigend)."""
-    x_new, y_new = webmercator_target_grid(extent, out_width=out_width)
-    xx, yy = np.meshgrid(x_new, y_new)
-    lon_grid = np.degrees(xx / EARTH_RADIUS)
-    lat_grid = np.degrees(2 * np.arctan(np.exp(yy / EARTH_RADIUS)) - np.pi / 2)
-
-    interp_func = RegularGridInterpolator(
-        (lat, lon), data,
-        method=method,
-        bounds_error=False,
-        fill_value=np.nan
-    )
-    pts = np.array([lat_grid.ravel(), lon_grid.ravel()]).T
-    warped = interp_func(pts).reshape(lat_grid.shape)
-    return warped
-
-
-# Feste Kartendomäne (ICON-D2-Box) einmalig nach EPSG:3857 (Meter)
-# umgerechnet - das ist der "imageExtent", den OpenLayers' ImageStatic-
-# Quelle direkt in Kartenkoordinaten erwartet (kein weiteres Strecken
-# nötig, da das Bild bereits auf genau dieses Raster projiziert wurde).
-_dom_x_min, _dom_y_min = lonlat_to_webmercator(extent[0], extent[2])
-_dom_x_max, _dom_y_max = lonlat_to_webmercator(extent[1], extent[3])
-DOMAIN_EXTENT_3857 = [float(_dom_x_min), float(_dom_y_min), float(_dom_x_max), float(_dom_y_max)]
-
-# ------------------------------
-# Bounding Box für den eingebetteten DVAL-Chunk (nur t2m/wind)
-# ------------------------------
-# Die volle ICON-D2-Domäne (inkl. Frankreich, Benelux, Polen, Tschechien
-# etc.) ist für die eingebetteten Rohwerte unnötig groß - wir brauchen die
-# Werte nur für Deutschland (+ etwas Rand für Grenzregionen beim Hovern).
-# Das Farbbild selbst bleibt unverändert auf der vollen Domäne, nur das
-# DVAL-Array wird auf dieses Rechteck zugeschnitten.
-GERMANY_BBOX_LONLAT = [5.5, 15.3, 47.0, 55.3]  # lon_min, lon_max, lat_min, lat_max
-
-# Gleiches Ziel-Pixelraster wie in warp_equirect_to_webmercator (muss mit
-# WEBMERCATOR_WIDTH übereinstimmen, damit die Indizes exakt passen) -
-# einmalig außerhalb der Schleife berechnet, da pro Lauf identisch.
-_full_x_new, _full_y_new = webmercator_target_grid(extent, out_width=WEBMERCATOR_WIDTH)
-
-_gbx_min, _gby_min = lonlat_to_webmercator(GERMANY_BBOX_LONLAT[0], GERMANY_BBOX_LONLAT[2])
-_gbx_max, _gby_max = lonlat_to_webmercator(GERMANY_BBOX_LONLAT[1], GERMANY_BBOX_LONLAT[3])
-
-# Indizes im vollen Raster, die die Bbox gerade so umschließen (lieber
-# ein Pixel zu viel als zu wenig - daher außen aufrunden statt clippen).
-_col_i0 = max(0, np.searchsorted(_full_x_new, _gbx_min, side="left") - 1)
-_col_i1 = min(len(_full_x_new) - 1, np.searchsorted(_full_x_new, _gbx_max, side="right"))
-_row_i0 = max(0, np.searchsorted(_full_y_new, _gby_min, side="left") - 1)
-_row_i1 = min(len(_full_y_new) - 1, np.searchsorted(_full_y_new, _gby_max, side="right"))
-
-# Exakte Mercator-Extent des zugeschnittenen Rasters (= tatsächliche
-# Gitterpunkte an den Rändern, nicht die rohe Bbox - damit die
-# Rücktransformation im Frontend pixelgenau bleibt).
-GERMANY_CROP_EXTENT_3857 = [
-    float(_full_x_new[_col_i0]), float(_full_y_new[_row_i0]),
-    float(_full_x_new[_col_i1]), float(_full_y_new[_row_i1]),
-]
-
-
-def crop_to_germany(data_south_first):
-    """data_south_first: 2D-Array wie von warp_equirect_to_webmercator
-    zurückgegeben (row0 = Süden, aufsteigend in Mercator-Y wie
-    _full_y_new). Schneidet auf die Deutschland-Bbox zu."""
-    return data_south_first[_row_i0:_row_i1 + 1, _col_i0:_col_i1 + 1]
-
-
-def data_to_rgba(data, cmap, norm):
-    """Wandelt ein 2D-Datenarray in ein RGBA-uint8-Array um.
-    NaN-Werte werden komplett transparent."""
-    rgba = cmap(norm(data))  # float RGBA in [0,1], shape (H,W,4)
-    rgba = (rgba * 255).astype(np.uint8)
-    nan_mask = ~np.isfinite(data)
-    rgba[nan_mask, 3] = 0
-    return rgba
-
-
-def save_transparent_webp(data, cmap, norm, out_path):
-    rgba = data_to_rgba(data, cmap, norm)
-    img = Image.fromarray(rgba[::-1, :, :], mode="RGBA")
-
-    # Verlustfrei speichern: die Colormaps arbeiten mit diskreten Stufen
-    # und set_under(alpha=0) für Transparenz - eine verlustbehaftete
-    # WebP-Kompression würde Farbgrenzen und den Transparenz-Threshold
-    # sichtbar verwischen.
-    #
-    # method=4 statt 6: bei diesen Bildern (große einfarbige/transparente
-    # Flächen, wenige diskrete Farbstufen) liefert method=6 praktisch
-    # dieselbe Dateigröße wie method=4, braucht dabei aber ~100x länger
-    # (gemessen: 3.9s vs. 0.04s pro Bild) - der höhere Aufwand bringt hier
-    # also keinen Vorteil, kostet aber massiv Laufzeit.
-    img.save(out_path, format="WEBP", lossless=True, method=4)
-
-
-# ------------------------------
-# Eingebettete Rohdaten (DVAL-Chunk) im WebP
-# ------------------------------
-# WebP ist ein RIFF-Container. RIFF erlaubt beliebige zusätzliche Chunks
-# mit eigenem FourCC-Tag - konforme Reader (Browser, Bildbetrachter, PIL)
-# ignorieren unbekannte Chunks einfach, genau wie private PNG-Chunks.
-# Wir hängen hier einen "DVAL"-Chunk mit den echten physikalischen Werten
-# (nicht den Farben!) an, komprimiert mit zlib, plus die exakte
-# Web-Mercator-Domäne in Metern - damit lässt sich im Frontend pixelgenau
-# und ohne Rundungsfehler zurückrechnen, welcher Wert an welcher
-# Lon/Lat-Position liegt. Keine separate Datei nötig.
-#
-# Chunk-Layout (nach den 8 Bytes FourCC + size), Version 2:
-#   uint8  version   (=2)
-#   uint8  dtype     (=1: int16 quantisiert, little-endian, zlib-komprimiert)
-#   uint32 width
-#   uint32 height
-#   float64 x_min, y_min, x_max, y_max   (EPSG:3857, Meter)
-#   float64 scale     (echter Wert = raw_int16 * scale; NaN-Sentinel = -32768)
-#   ... zlib-komprimierte int16-Daten, row0 = Norden (Bild-Orientierung),
-#       row-major, len = width*height*2 Bytes nach Dekompression
-#
-# Warum int16 statt float32: t2m/wind werden ohnehin nur mit 1 bzw. 0
-# Nachkommastellen angezeigt - float32 speichert weit mehr Präzision, als
-# je genutzt wird. Die Quantisierung auf ein festes Raster (z.B. 0.05°C)
-# halbiert nicht nur die Rohgröße, sondern erzeugt durch den Wegfall des
-# Interpolations-"Rauschens" auch deutlich mehr exakt gleiche
-# Nachbarwerte - das macht das Feld für zlib erheblich kompressibler.
-DVAL_FOURCC = b"DVAL"
-
-# Quantisierungsschritt je Variable (feiner als die Anzeige-Nachkommastellen
-# in VALUE_DECIMALS, damit keinerlei sichtbarer Genauigkeitsverlust entsteht).
-QUANTUM_STEP = {
-    "t2m": 0.05,   # °C, Anzeige mit 1 Dezimalstelle -> 0.05 ist mehr als genug
-    "wind": 0.2,   # km/h, Anzeige mit 0 Dezimalstellen -> 0.2 ist mehr als genug
-    "tp": 0.1,     # mm, Anzeige mit 1 Dezimalstelle -> 0.1 ist mehr als genug
-    "tp_acc": 0.1,  # mm, Anzeige mit 1 Dezimalstelle -> 0.1 ist mehr als genug
-    "cape_ml": 1.0,  # J/kg, Anzeige mit 0 Dezimalstellen -> 1.0 ist mehr als genug
-    "change_snow": 0.1,  # cm, Anzeige mit 1 Dezimalstelle -> 0.1 ist mehr als genug
-}
-NAN_SENTINEL_I16 = -32768
-
-
-def embed_data_chunk(webp_path, data, extent_3857, quantum, fourcc=DVAL_FOURCC):
-    """Hängt ein rohes Datenfeld als privaten, int16-quantisierten RIFF-Chunk
-    an ein WebP an.
-
-    data: 2D-Array (float), row0 = Norden (also bereits wie fürs Bild
-          gespiegelt).
-    extent_3857: [x_min, y_min, x_max, y_max] in Web-Mercator-Metern -
-                 exakt das Raster, auf dem `data` liegt.
-    quantum: Rasterschritt in den Originaleinheiten (z.B. 0.05 für °C).
-    """
-    height, width = data.shape
-
-    nan_mask = ~np.isfinite(data)
-    data_filled = np.where(nan_mask, 0.0, data)  # verhindert NaN->int Warnung beim Runden/Casten
-    quant = np.round(data_filled / quantum)
-    # Sicherheitsclip: verhindert einen int16-Überlauf bei extremen
-    # Ausreißern, ohne das eigentlich zulässige Wertespektrum
-    # (t2m/wind liegen weit darunter) einzuschränken.
-    quant = np.clip(quant, -32767, 32767).astype(np.int16)
-    quant[nan_mask] = NAN_SENTINEL_I16
-
-    header = struct.pack("<BBII", 2, 1, width, height)
-    header += struct.pack("<4d", *extent_3857)
-    header += struct.pack("<d", quantum)
-    compressed = zlib.compress(np.ascontiguousarray(quant, dtype="<i2").tobytes(), level=9)
-    payload = header + compressed
-
-    size = len(payload)
-    chunk = fourcc + struct.pack("<I", size) + payload
-    if size % 2 == 1:
-        chunk += b"\x00"  # RIFF-Padding auf gerade Länge, zählt nicht zu size
-
-    with open(webp_path, "rb") as f:
-        content = f.read()
-
-    if content[0:4] != b"RIFF" or content[8:12] != b"WEBP":
-        raise ValueError(f"{webp_path} ist keine gültige WebP-Datei (RIFF/WEBP-Header fehlt)")
-
-    riff_size = struct.unpack("<I", content[4:8])[0]
-    new_riff_size = riff_size + len(chunk)
-
-    with open(webp_path, "wb") as f:
-        f.write(content[:4])
-        f.write(struct.pack("<I", new_riff_size))
-        f.write(content[8:])
-        f.write(chunk)
 
 
 # ------------------------------
@@ -480,14 +88,35 @@ def embed_data_chunk(webp_path, data, extent_3857, quantum, fourcc=DVAL_FOURCC):
 # ------------------------------
 all_files_global = sorted([f for f in os.listdir(data_dir) if f.endswith(".grib2")])
 
+meta = {
+    "var": var_type,
+    "unit": enc["unit"],
+    "dtype": "uint8",
+    "nodata": NODATA_U8,
+    "levels": LEVELS,
+    "transform": enc["transform"],
+    "vmin": enc["vmin"],
+    "vmax": enc["vmax"],
+    "decode": {
+        "linear": "v = vmin + (q/254) * (vmax - vmin)",
+        "sqrt": "v = vmin + (q/254)^2 * (vmax - vmin)",
+        "ssqrt": "u = q/254*2 - 1; v = sign(u) * u^2 * vmax",
+        "raw": "v = q",
+    }[enc["transform"]],
+    "orientation": "row0 = Norden, row-major, uint8",
+    "projection": "EPSG:4326",
+    "extent_4326": [extent[0], extent[2], extent[1], extent[3]],  # lon_min, lat_min, lon_max, lat_max
+    "width": None,
+    "height": None,
+    "files": [],
+}
+
 for filename in all_files_global:
     path = os.path.join(data_dir, filename)
     ds = cfgrib.open_dataset(path)
 
     valid_time_utc_override = None
-    lon2d = lat2d = None  # nur gesetzt, falls im Zweig gebraucht
 
-    # Daten je Typ (Logik unverändert aus dem Original übernommen)
     if var_type == "t2m":
         if "t2m" not in ds:
             print(f"Keine t2m in {filename}")
@@ -614,10 +243,6 @@ for filename in all_files_global:
             continue
         data = ds["SNOWLMT"].values
         data[data < 0] = np.nan
-    else:
-        print(f"Unbekannter var_type {var_type}")
-        ds.close()
-        continue
 
     if data.ndim == 3:
         data = data[0]
@@ -636,12 +261,7 @@ for filename in all_files_global:
         valid_time_utc = run_time_utc + step
     valid_time_local = valid_time_utc.tz_localize("UTC").astimezone(ZoneInfo("Europe/Berlin"))
 
-    # ---------------------------------
-    # Natives ICON-D2-Gitter beibehalten (keine Interpolation auf ein
-    # feineres/anderes Raster mehr) - lediglich sicherstellen, dass lat/lon
-    # aufsteigend sortiert sind, da RegularGridInterpolator (in
-    # warp_equirect_to_webmercator) das voraussetzt.
-    # ---------------------------------
+    # lat/lon aufsteigend sortieren (nötig für RegularGridInterpolator)
     if lon.ndim == 1 and lat.ndim == 1 and data.ndim == 2:
         if lat[0] > lat[-1]:
             lat = lat[::-1]
@@ -650,104 +270,28 @@ for filename in all_files_global:
             lon = lon[::-1]
             data = data[:, ::-1]
 
-    # data ist jetzt (lat aufsteigend, lon aufsteigend) sortiert,
-    # Zeile 0 = Süden. Für save_transparent_webp reicht das - dort wird
-    # zum Speichern vertikal gespiegelt (Bildzeile 0 = Norden).
+    # Gitter liegt nach der Sortierung oben schon Süden -> Norden vor.
+    # row0 = Norden, dann nach uint8 quantisieren
+    data_north_first = data[::-1]
+    q = encode_uint8(data_north_first, enc)
 
-    # ------------------------------
-    # Farb-/Kategorie-Mapping je Typ
-    # ------------------------------
-    if var_type == "t2m":
-        cmap, norm = t2m_colors, t2m_norm
-        render_data = data
-    elif var_type == "ww":
-        valid_mask = np.isfinite(data)
-        codes = np.unique(data[valid_mask]).astype(int)
-        codes = [c for c in codes if c in ww_colors_base and c not in ignore_codes]
-        codes.sort()
-        cmap = ListedColormap([ww_colors_base[c] for c in codes]) if codes else ListedColormap(["#FFFFFF00"])
-        norm = mcolors.Normalize(vmin=-0.5, vmax=max(len(codes) - 0.5, 0.5))
-        code2idx = {c: i for i, c in enumerate(codes)}
-        idx_data = np.full_like(data, fill_value=np.nan, dtype=float)
-        for c, i in code2idx.items():
-            idx_data[data == c] = i
-        render_data = idx_data
-    elif var_type == "tp":
-        cmap, norm = prec_colors, prec_norm
-        render_data = data
-    elif var_type == "tp_acc":
-        cmap, norm = tp_acc_colors, tp_acc_norm
-        render_data = data
-    elif var_type == "cape_ml":
-        cmap, norm = cape_colors, cape_norm
-        render_data = data
-    elif var_type == "dbz_cmax":
-        render_data = gaussian_filter(data, sigma=0.8)
-        cmap, norm = dbz_colors, dbz_norm
-    elif var_type == "wind":
-        cmap, norm = wind_colors, wind_norm
-        render_data = data
-    elif var_type == "snow":
-        cmap, norm = snow_colors, snow_norm
-        render_data = data
-    elif var_type == "change_snow":
-        cmap, norm = change_colors, change_norm
-        render_data = data
-    elif var_type == "cloud":
-        cmap, norm = cloud_colors, cloud_norm
-        render_data = data
-    elif var_type == "twater":
-        cmap, norm = twater_colors, twater_norm
-        render_data = data
-    elif var_type == "snowfall":
-        cmap, norm = snowfall_colors, snowfall_norm
-        render_data = data
-    else:
-        ds.close()
-        continue
+    height, width = q.shape
+    meta["width"], meta["height"] = int(width), int(height)
 
-    # ------------------------------
-    # Nach EPSG:3857 (Web Mercator) umprojizieren
-    # ------------------------------
-    merc_method = "nearest" if var_type == "ww" else "linear"
-    render_data_merc = warp_equirect_to_webmercator(
-        render_data, lon, lat, extent, method=merc_method
-    )
-
-    # ------------------------------
-    # Transparentes WebP speichern
-    # ------------------------------
-    outname = f"{var_type}_{valid_time_local:%Y%m%d_%H%M}.webp"
+    outname = f"{var_type}_{valid_time_local:%Y%m%d_%H%M}.bin"
     out_path = os.path.join(output_dir, outname)
-    save_transparent_webp(render_data_merc, cmap, norm, out_path)
+    np.ascontiguousarray(q, dtype=np.uint8).tofile(out_path)
 
-    # Für t2m/wind zusätzlich die echten physikalischen Werte (°C bzw.
-    # km/h, nicht die Farben) als privaten RIFF-Chunk direkt ins WebP
-    # einbetten - row0 = Norden, damit der Chunk 1:1 zur Bildorientierung
-    # passt (das Bild wird in save_transparent_webp beim Speichern
-    # gespiegelt, render_data_merc selbst hat row0 = Süden).
-    if var_type in EMBED_DATA_VARS:
-        germany_data = crop_to_germany(render_data_merc)          # row0 = Süden
-        quantum = QUANTUM_STEP.get(var_type, 0.1)
-        embed_source = germany_data[::-1] 
+    meta["files"].append({
+        "file": outname,
+        "valid_time_utc": valid_time_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "valid_time_local": valid_time_local.strftime("%Y-%m-%dT%H:%M:%S%z"),
+    })
 
-        if var_type in ("tp", "tp_acc"):
-            embed_source = np.where(embed_source < 0.1, np.nan, embed_source)
-        if var_type == "cape_ml":
-            embed_source = np.where(embed_source < 20, np.nan, embed_source)
-        if var_type == "change_snow":
-            embed_source = np.where(np.abs(embed_source) < 0.1, np.nan, embed_source)
+    print(f"{filename} -> {outname} ({width}x{height}, {q.nbytes} Bytes)")
 
-        embed_data_chunk(out_path, embed_source, GERMANY_CROP_EXTENT_3857, quantum)  # row0 = Norden
-
-    print(f"{filename} -> {outname}")
-
-    # ------------------------------
-    # Aufräumen - wichtig bei vielen Dateien in der Schleife!
-    # ------------------------------
-    # cfgrib/xarray hält sonst Dateihandles + gepufferte Arrays offen und
-    # der Speicherverbrauch wächst über die Schleife hinweg immer weiter
-    # an, bis irgendwann selbst kleine Allokationen fehlschlagen.
     ds.close()
-    del data, render_data, render_data_merc
+    del data, data_north_first, q
     gc.collect()
+
+print("META: " + json.dumps(meta, ensure_ascii=False))
