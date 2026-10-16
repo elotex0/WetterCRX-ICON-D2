@@ -1,0 +1,99 @@
+name: Fetch ICON-RUC GRIB2 and Generate PNGs
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fetch_and_generate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.set_run_date.outputs.run }}
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Cache Python packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Set RUN and DATE (hourly)
+        id: set_run_date
+        run: |
+          HOUR=$(date -u +%H)
+          DATE=$(date -u +%Y-%m-%d)
+          RUN=$HOUR
+
+          echo "RUN=$RUN" >> "$GITHUB_ENV"
+          echo "DATE=$DATE" >> "$GITHUB_ENV"
+
+          echo "run=$RUN" >> "$GITHUB_OUTPUT"
+          echo "date=$DATE" >> "$GITHUB_OUTPUT"
+
+      - name: Download ICON grid (clat/clon)
+        run: |
+          set -e
+          mkdir -p data/grid
+
+          wget -q https://github.com/elotex0/WetterCRX-ICON-RUC/releases/download/v1.0/clat.grib2 \
+            -O data/grid/clat.grib2
+
+          wget -q https://github.com/elotex0/WetterCRX-ICON-RUC/releases/download/v1.0/clon.grib2 \
+            -O data/grid/clon.grib2
+
+      - name: Download t2m GRIB2 files
+        run: |
+          mkdir -p data/t2m
+          cd data/t2m
+
+          for i in $(seq 0 27); do
+            i_padded=$(printf "%03d" "$i")
+            URL="https://opendata.dwd.de/weather/nwp/v1/m/icon-d2-ruc/p/T_2M/r/${DATE}T${RUN}:00/s/PT${i_padded}H00M.grib2"
+
+            if wget -q -O "t2m_${i_padded}.grib2" "$URL"; then
+              if [ -s "t2m_${i_padded}.grib2" ]; then
+                echo "Download OK: t2m_${i_padded}.grib2"
+              else
+                rm -f "t2m_${i_padded}.grib2"
+                echo "Download fehlgeschlagen: t2m_${i_padded}.grib2 (Datei leer)"
+              fi
+            else
+              rm -f "t2m_${i_padded}.grib2"
+              echo "Nicht verfügbar: t2m_${i_padded}.grib2"
+            fi
+          done
+
+      - name: Test result
+        if: always()
+        run: |
+          GRID_OK=true
+          T2M_COUNT=0
+
+          for file in data/grid/clat.grib2 data/grid/clon.grib2; do
+            if [ ! -s "$file" ]; then
+              GRID_OK=false
+            fi
+          done
+
+          if [ -d data/t2m ]; then
+            T2M_COUNT=$(find data/t2m -maxdepth 1 -type f -name 't2m_*.grib2' -size +0c | wc -l)
+          fi
+
+          if [ "$GRID_OK" = true ] && [ "$T2M_COUNT" -gt 0 ]; then
+            echo "TEST ERFOLGREICH: Grid-Dateien OK, $T2M_COUNT T2M-Dateien heruntergeladen."
+          else
+            echo "TEST FEHLGESCHLAGEN: Grid OK=$GRID_OK, T2M-Dateien=$T2M_COUNT."
+            exit 1
+          fi
