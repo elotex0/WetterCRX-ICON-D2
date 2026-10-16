@@ -84,7 +84,7 @@ jobs:
         run: |
           mkdir -p data/tp
           cd data/tp
-          seq 0 47 | xargs -n 1 -P 12 -I{} bash -c '
+          seq 0 48 | xargs -n 1 -P 12 -I{} bash -c '
             i_padded=$(printf "%03d" {})
             URL="https://opendata.dwd.de/weather/nwp/v1/m/icon-d2/p/TOT_PREC/r/${DATE}T${RUN}:00/s/PT${i_padded}H00M.grib2"
             wget -O tot_prec_${i_padded}.grib2 "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
@@ -94,7 +94,7 @@ jobs:
         run: |
           mkdir -p data/cape_ml
           cd data/cape_ml
-          seq 0 47 | xargs -n 1 -P 12 -I{} bash -c '
+          seq 0 48 | xargs -n 1 -P 12 -I{} bash -c '
             i_padded=$(printf "%03d" {})
             URL="https://opendata.dwd.de/weather/nwp/v1/m/icon-d2/p/CAPE_ML/r/${DATE}T${RUN}:00/s/PT${i_padded}H00M.grib2"
             wget -O cape_ml_${i_padded}.grib2 "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
@@ -104,7 +104,7 @@ jobs:
         run: |
           mkdir -p data/dbz_cmax
           cd data/dbz_cmax
-          seq 0 47 | xargs -n 1 -P 12 -I{} bash -c '
+          seq 0 48 | xargs -n 1 -P 12 -I{} bash -c '
             i_padded=$(printf "%03d" {})
             URL="https://opendata.dwd.de/weather/nwp/v1/m/icon-d2/p/DBZ_CMAX/r/${DATE}T${RUN}:00/s/PT${i_padded}H00M.grib2"
             wget -O dbz_cmax_${i_padded}.grib2 "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
@@ -113,7 +113,7 @@ jobs:
         run: |
           mkdir -p data/wind
           cd data/wind
-          seq 0 47 | xargs -n 1 -P 12 -I{} bash -c '
+          seq 0 48 | xargs -n 1 -P 12 -I{} bash -c '
             i_padded=$(printf "%03d" {} )
             URL="https://opendata.dwd.de/weather/nwp/v1/m/icon-d2/p/VMAX_10M/r/${DATE}T${RUN}:00/s/PT${i_padded}H00M.grib2"
             wget -O wind_${i_padded}.grib2 "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
@@ -123,7 +123,7 @@ jobs:
         run: |
           mkdir -p data/snow
           cd data/snow
-          seq 0 47 | xargs -n 1 -P 12 -I{} bash -c '
+          seq 0 48 | xargs -n 1 -P 12 -I{} bash -c '
             i_padded=$(printf "%03d" {} )
             URL="https://opendata.dwd.de/weather/nwp/v1/m/icon-d2/p/H_SNOW/r/${DATE}T${RUN}:00/s/PT${i_padded}H00M.grib2"
             wget -O snow_${i_padded}.grib2 "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
@@ -134,7 +134,7 @@ jobs:
         run: |
           mkdir -p data/cloud
           cd data/cloud
-          seq 0 47 | xargs -n 1 -P 12 -I{} bash -c '
+          seq 0 48 | xargs -n 1 -P 12 -I{} bash -c '
             i_padded=$(printf "%03d" {} )
             URL="https://opendata.dwd.de/weather/nwp/v1/m/icon-d2/p/CLCT/r/${DATE}T${RUN}:00/s/PT${i_padded}H00M.grib2"
             wget -O cloud_${i_padded}.grib2 "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
@@ -143,7 +143,7 @@ jobs:
         run: |
           mkdir -p data/twater
           cd data/twater
-          seq 0 47 | xargs -n 1 -P 12 -I{} bash -c '
+          seq 0 48 | xargs -n 1 -P 12 -I{} bash -c '
             i_padded=$(printf "%03d" {} )
             URL="https://opendata.dwd.de/weather/nwp/v1/m/icon-d2/p/TWATER/r/${DATE}T${RUN}:00/s/PT${i_padded}H00M.grib2"
             wget -O twater_${i_padded}.grib2 "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
@@ -153,7 +153,7 @@ jobs:
         run: |
           mkdir -p data/snowfall
           cd data/snowfall
-          seq 0 47 | xargs -n 1 -P 12 -I{} bash -c '
+          seq 0 48 | xargs -n 1 -P 12 -I{} bash -c '
             i_padded=$(printf "%03d" {} )
             URL="https://opendata.dwd.de/weather/nwp/v1/m/icon-d2/p/SNOWLMT/r/${DATE}T${RUN}:00/s/PT${i_padded}H00M.grib2"
             wget -O snowfall_${i_padded}.grib2 "$URL" || echo "Datei $URL nicht verfügbar, überspringe..."
